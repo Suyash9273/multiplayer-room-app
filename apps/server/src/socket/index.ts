@@ -1,5 +1,6 @@
 import {Server} from "socket.io"
 import type {Server as HttpServer} from "http"
+import { addUser, removeUser, getOnlineUsers } from "./presence.js"
 
 export const initializeSocket = (httpServer: HttpServer) => {
     //1. Attach socket.io to the provided http server:
@@ -14,8 +15,16 @@ export const initializeSocket = (httpServer: HttpServer) => {
     io.on("connection", (socket) => {
         console.log(`The user connected with id: ${socket.id}`)
 
+        socket.on("join", (username: string) => {
+            console.log(`Before addUser: ${getOnlineUsers()}`)
+            addUser(username, socket.id)
+            console.log(`After addUser: ${getOnlineUsers()}`)
+        })
+
         socket.on("disconnect", () => {
             console.log(`The user disconnected with id: ${socket.id}`)
+            removeUser(socket.id);
+            console.log(`After remove user: ${getOnlineUsers()}`)
         })
         //We would add more event listeners here in the future
     })
