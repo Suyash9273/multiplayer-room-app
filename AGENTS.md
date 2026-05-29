@@ -148,3 +148,30 @@ We have successfully wired the frontend to listen for global state changes.
 
 **Next Immediate Goal:**
 Transitioning from Global Broadcasting to Scoped Broadcasting (Rooms).
+
+---
+
+# CURRENT STATE: ROOM PRESENCE ARCHITECTURE (COMPLETED)
+
+We have successfully built the In-Memory Room Architecture.
+
+**Architectural Milestone Achieved:**
+- **Tracking Transports, Not Identities:** To solve the Room Multi-Tab Problem, `roomToSockets` tracks `Set<socketId>` instead of usernames. 
+- **O(K) Derivation:** `getUsersInRoom` derives the unique username list in O(K) time (where K is room size) by cross-referencing `socketToUser`.
+- **Lifecycle Garbage Collection:** Intercepting the `disconnecting` event allows us to read `socket.rooms` and safely scrub the user from all custom room maps before the socket is fully destroyed.
+
+**Next Immediate Goal:**
+Wire the transport layer to handle specific room joining and scoped broadcasting (`io.to(room).emit`).
+
+---
+
+# CURRENT STATE: ROOM TRANSPORT & SCOPED BROADCASTING (COMPLETED)
+
+We have successfully wired the transport layer to handle Rooms.
+
+**Architectural Milestone Achieved:**
+- **Network/Memory Sync:** The `enterRoom` and `leaveRoom` socket events strictly synchronize Socket.IO's native network rooms (`socket.join`/`socket.leave`) with our custom O(1) memory maps.
+- **Scoped Broadcasting:** The server uses `io.to(room).emit` to push roster updates *only* to the specific clients residing within that room, preserving bandwidth and client-side performance.
+
+**Next Immediate Goal:**
+Build the Frontend Room UI to emit `enterRoom`/`leaveRoom` events, track `roomUsers` state, and handle scoped room events without breaking the global presence system.
