@@ -19,12 +19,14 @@ export const initializeSocket = (httpServer: HttpServer) => {
             console.log(`Before addUser: ${getOnlineUsers()}`)
             addUser(username, socket.id)
             console.log(`After addUser: ${getOnlineUsers()}`)
+            io.emit("onlineUsers", getOnlineUsers())
         })
 
         socket.on("disconnect", () => {
             console.log(`The user disconnected with id: ${socket.id}`)
             removeUser(socket.id);
             console.log(`After remove user: ${getOnlineUsers()}`)
+            socket.broadcast.emit("onlineUsers", getOnlineUsers())
         })
         //We would add more event listeners here in the future
     })

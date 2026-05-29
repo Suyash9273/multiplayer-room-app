@@ -18,15 +18,35 @@ import { socket } from "@/lib/socket";
 export default function Home() {
   const [username, setUsername] = useState<string>("")
   const [isJoined, setIsJoined] = useState<boolean>(false)
+  const [onlineUsers, setOnlineUsers] = useState<string[]>()
   
-  const handleJoin = () => {
+  const handleJoin = (e: React.MouseEvent) => {
+    e.preventDefault() //harmless even if not needed, good practice
     socket.emit("join", username)
     setIsJoined(true)
   }
 
+  useEffect(() => {
+    socket.on("onlineUsers", (users) => {
+      setOnlineUsers(users)
+    })
+
+    return () => {
+      socket.off("onlineUsers")
+    }
+  }, [])
+
   
   if(isJoined) {
-    return <div>Welcome user: {username}</div>
+    return (
+      <ul>
+        {
+          onlineUsers?.map((user) => (
+            <li key={user}>{user} is online.</li>
+          ))
+        }
+      </ul>
+    )
   }
 
   return (
@@ -59,7 +79,7 @@ export default function Home() {
         </form>
       </CardContent>
       <CardFooter className="flex-col gap-2">
-        <Button type="submit" className="w-full" onClick={handleJoin}>
+        <Button type="button" className="w-full" onClick={handleJoin}>
           Join
         </Button>
       </CardFooter>

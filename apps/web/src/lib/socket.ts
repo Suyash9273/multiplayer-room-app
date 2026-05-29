@@ -13,4 +13,3 @@ socket.on("connect", () => {
 socket.on("disconnect", (reason) => {
     console.log(`User disconnected due to : ${reason}`)
 })
-

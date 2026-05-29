@@ -136,3 +136,15 @@ State management is now strictly decoupled from network transport.
 
 **Next Immediate Goal:**
 Build the Frontend Trigger (Next.js guest login UI) to emit the `"join"` event and visually test the Multi-Tab Architecture via terminal logs.
+
+# CURRENT STATE: FRONTEND RECEIVER & GLOBAL BROADCASTING (COMPLETED)
+
+We have successfully wired the frontend to listen for global state changes.
+
+**Architectural Milestone Achieved:**
+- **Server Broadcasting:** The backend correctly uses `io.emit` (for self + others) and `socket.broadcast.emit` (for others only) to aggressively push state changes down to clients.
+- **Client Reactivity:** The Next.js frontend uses a strict `useEffect` pattern with an empty dependency array `[]` and a cleanup function (`socket.off`) to prevent React re-render loops and memory leaks.
+- **Form State:** Implemented `e.preventDefault()` to prevent standard HTTP form submissions from destroying the persistent WebSocket connection.
+
+**Next Immediate Goal:**
+Transitioning from Global Broadcasting to Scoped Broadcasting (Rooms).
