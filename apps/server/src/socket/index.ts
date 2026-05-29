@@ -1,6 +1,6 @@
 import {Server} from "socket.io"
 import type {Server as HttpServer} from "http"
-import { addUser, removeUser, getOnlineUsers } from "./presence.js"
+import { addUser, removeUser, getOnlineUsers, leaveRoom } from "./presence.js"
 
 export const initializeSocket = (httpServer: HttpServer) => {
     //1. Attach socket.io to the provided http server:
@@ -20,6 +20,14 @@ export const initializeSocket = (httpServer: HttpServer) => {
             addUser(username, socket.id)
             console.log(`After addUser: ${getOnlineUsers()}`)
             io.emit("onlineUsers", getOnlineUsers())
+        })
+        //to fix the potential memory leak if user abruptly closes browser window
+        socket.on("disconnecting", () => {
+            socket.rooms.forEach((room) => {
+                if(room !== socket.id) {
+                    leaveRoom(room, socket.id)
+                }
+            })
         })
 
         socket.on("disconnect", () => {
