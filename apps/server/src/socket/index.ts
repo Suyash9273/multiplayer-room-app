@@ -23,27 +23,27 @@ export const initializeSocket = (httpServer: HttpServer) => {
         })
 
         //entering a room
-        socket.on("enterRoom", (roomName: string) => {
+        socket.on("enterRoom", (roomId: string) => {
             //1. Network action
-            socket.join(roomName)
+            socket.join(roomId)
 
             //2. Memory action
-            joinRoom(roomName, socket.id)
+            joinRoom(roomId, socket.id)
 
             //3. Scoped broadcasting
-            io.to(roomName).emit("roomUsers", getUsersInRoom(roomName))
+            io.to(roomId).emit("roomUsers", getUsersInRoom(roomId))
         })
 
         //leaving a room
-        socket.on("leaveRoom", (roomName: string) => {
+        socket.on("leaveRoom", (roomId: string) => {
             //1. Memory action
-            leaveRoom(roomName, socket.id)
+            leaveRoom(roomId, socket.id)
 
             //2. Network action
-            socket.leave(roomName)
+            socket.leave(roomId)
 
             //3. Scoped broadcasting
-            socket.to(roomName).emit("roomUsers", getUsersInRoom(roomName))
+            socket.to(roomId).emit("roomUsers", getUsersInRoom(roomId))
         })
 
         //to fix the potential memory leak if user abruptly closes browser window

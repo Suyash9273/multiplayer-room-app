@@ -4,6 +4,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  /* This creates the 'font-orbitron' utility class */
+  --font-orbitron: var(--font-orbitron), sans-serif;
+  
+  /* If you also added a mono font like Share Tech Mono */
+  --font-tech: var(--font-share-tech), monospace;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
