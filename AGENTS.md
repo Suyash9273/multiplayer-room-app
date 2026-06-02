@@ -175,3 +175,16 @@ We have successfully wired the transport layer to handle Rooms.
 
 **Next Immediate Goal:**
 Build the Frontend Room UI to emit `enterRoom`/`leaveRoom` events, track `roomUsers` state, and handle scoped room events without breaking the global presence system.
+
+---
+
+# CURRENT STATE: FRONTEND ROOM UI (COMPLETED)
+
+We have successfully built the frontend UI to consume the scoped room state.
+
+**Architectural Milestone Achieved:**
+- **SPA Switchboard:** Decoupled `page.tsx` into a strict phase-based router (Login -> Lobby -> Room) based solely on volatile realtime state (`isJoined`, `currentRoom`).
+- **Context API:** Consolidated all socket listeners and global state into `SocketContext.tsx` to serve as the single source of truth, preventing React render-loop bugs and duplicate socket listeners.
+
+**Next Immediate Goal:**
+Implement scoped data transmission (e.g., actual chat messaging) inside the rooms.

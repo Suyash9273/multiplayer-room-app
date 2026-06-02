@@ -4,22 +4,13 @@ import "./globals.css";
 import { Inter, Orbitron, Share_Tech_Mono } from "next/font/google";
 import { SocketProvider } from "@/context/SocketContext";
 
-// const roboto = Roboto({
-//   weight: ["400", "500", "700"],
-//   variable: "--font-roboto",
-//   subsets: ["latin"],
-// });
-
-// Load standard font for regular text
 const inter = Inter({ subsets: ["latin"] });
 
-// Load Orbitron for headings and UI elements
 const orbitron = Orbitron({ 
   subsets: ["latin"],
   variable: "--font-orbitron",
 });
 
-// Optional: Load a mono font for inputs/terminals (very common in this aesthetic)
 const shareTechMono = Share_Tech_Mono({
   weight: "400",
   subsets: ["latin"],
@@ -49,11 +40,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      // 1. Added "dark" to force Shadcn's dark CSS variables
       className={`dark ${inter.className} ${orbitron.variable} ${shareTechMono.variable} ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      {/* 2. Added bg-background and text-foreground to apply the dark colors to the whole page */}
-      <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
+      {/* THE FIX: 
+        1. Changed 'min-h-full' to 'h-full' to rigidly lock the height.
+        2. Added 'overflow-hidden' to prevent the document body from ever scrolling.
+      */}
+      <body className="h-full overflow-hidden flex flex-col bg-background text-foreground font-sans">
         <SocketProvider>
           {children}
         </SocketProvider>

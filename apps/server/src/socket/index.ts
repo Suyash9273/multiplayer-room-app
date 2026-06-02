@@ -1,6 +1,7 @@
 import {Server} from "socket.io"
 import type {Server as HttpServer} from "http"
 import { addUser, removeUser, getOnlineUsers, joinRoom, leaveRoom, getUsersInRoom } from "./presence.js"
+import type { ChatMessage } from "@multiplayer/shared"
 
 export const initializeSocket = (httpServer: HttpServer) => {
     //1. Attach socket.io to the provided http server:
@@ -44,6 +45,12 @@ export const initializeSocket = (httpServer: HttpServer) => {
 
             //3. Scoped broadcasting
             socket.to(roomId).emit("roomUsers", getUsersInRoom(roomId))
+        })
+
+        //sending message
+        socket.on("sendMessage", (payload: ChatMessage) => {
+            //routing the payload to everyone in the room except sender
+            socket.to(payload.roomId).emit("receiveMessage", payload)
         })
 
         //to fix the potential memory leak if user abruptly closes browser window
