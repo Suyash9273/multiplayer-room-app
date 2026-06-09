@@ -9,11 +9,14 @@ export type SocketContextType = {
     messages: ChatMessage[];
     username: string;
     currentRoom: string;
+    typingUsers: string[];
     isJoined: boolean;
     join: (username: string) => void;
     enterRoom: (roomId: string) => void;
     leaveRoom: (roomId: string) => void;
     sendMessage: (message: string) => void;
+    emitTyping: () => void;
+    emitStopTyping: () => void;
 }
 
 export const SocketContext = createContext<SocketContextType | undefined>(undefined)
@@ -29,6 +32,7 @@ export function SocketProvider({
     const [isJoined, setIsJoined] = useState<boolean>(false)
     const [currentRoom, setCurrentRoom] = useState<string>("")
     const [messages, setMessages] = useState<ChatMessage[]>([])
+    const [typingUsers, setTypingUsers] = useState<string[]>([])
 
     function join(username: string) {
         socket.emit("join", username)
@@ -44,6 +48,7 @@ export function SocketProvider({
     function leaveRoom(roomId: string) {
         socket.emit("leaveRoom", roomId)
         setCurrentRoom("")
+        setTypingUsers([])
     }
 
     function sendMessage(message: string) {
@@ -56,6 +61,14 @@ export function SocketProvider({
 
         setMessages((prevMessages) => [...prevMessages, payload])
         socket.emit("sendMessage", payload)
+    }
+
+    function emitTyping() {
+        socket.emit("typing", currentRoom)
+    }
+
+    function emitStopTyping() {
+        socket.emit("stopTyping", currentRoom)
     }
 
     useEffect(() => {
@@ -71,10 +84,26 @@ export function SocketProvider({
             setMessages((prev) => [...prev, payload])
         })
 
+        socket.on("userTyping", (username: string) => {
+            setTypingUsers((prev) => {
+                if(prev.includes(username)) return prev
+                return [...prev, username]
+            })
+        })
+
+        socket.on("userStoppedTyping", (username: string) => {
+            setTypingUsers((prev) => {
+                //Remove the username from typingUsers array
+                return prev.filter((user) => user !== username)
+            })
+        })
+
         return () => {
             socket.off("onlineUsers")
             socket.off("roomUsers")
             socket.off("receiveMessage")
+            socket.off("userTyping")
+            socket.off("userStoppedTyping")
         }
     }, [])
 
@@ -87,10 +116,13 @@ export function SocketProvider({
             messages,
             isJoined,
             currentRoom,
+            typingUsers,
             join,
             enterRoom,
             leaveRoom,
-            sendMessage
+            sendMessage,
+            emitTyping,
+            emitStopTyping
         }}>
             {children}
         </SocketContext.Provider>

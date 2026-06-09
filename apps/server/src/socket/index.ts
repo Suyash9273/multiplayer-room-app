@@ -1,6 +1,6 @@
 import {Server} from "socket.io"
 import type {Server as HttpServer} from "http"
-import { addUser, removeUser, getOnlineUsers, joinRoom, leaveRoom, getUsersInRoom } from "./presence.js"
+import { addUser, removeUser, getOnlineUsers, joinRoom, leaveRoom, getUsersInRoom, socketToUser } from "./presence.js"
 import type { ChatMessage } from "@multiplayer/shared"
 
 export const initializeSocket = (httpServer: HttpServer) => {
@@ -52,6 +52,21 @@ export const initializeSocket = (httpServer: HttpServer) => {
             //routing the payload to everyone in the room except sender
             socket.to(payload.roomId).emit("receiveMessage", payload)
         })
+
+        //listening for typing events:->
+        socket.on("typing", (roomId: string) => {
+            // 1. Look up the username using socket.id
+            const username = socketToUser.get(socket.id)
+            // 2. Broadcasting the typing event to the room
+            socket.to(roomId).emit("userTyping", username)
+        })
+        socket.on("stopTyping", (roomId: string) => {
+            // 1. Look up the username using socket.id
+            const username = socketToUser.get(socket.id)
+            // 2. Broadcasting the typing event to the room
+            socket.to(roomId).emit("userStoppedTyping", username)
+        })
+        
 
         //to fix the potential memory leak if user abruptly closes browser window
         socket.on("disconnecting", () => {

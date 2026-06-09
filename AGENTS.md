@@ -188,3 +188,17 @@ We have successfully built the frontend UI to consume the scoped room state.
 
 **Next Immediate Goal:**
 Implement scoped data transmission (e.g., actual chat messaging) inside the rooms.
+
+---
+
+# CURRENT STATE: DATA TRANSMISSION / CHAT (COMPLETED)
+
+We have successfully built the core chat pipeline.
+
+**Architectural Milestone Achieved:**
+- **The Event Contract:** Created a Single Source of Truth (`@multiplayer/shared`) using pnpm workspaces to enforce the `ChatMessage` interface across both the Express backend and Next.js frontend.
+- **Optimistic UI vs. Network Receivers:** The frontend updates local state instantly for the sender (Optimistic), while relying on `socket.on("receiveMessage")` to append data from others.
+- **Scoped Routing:** The backend leverages `socket.to(roomId).emit()` to efficiently broadcast payloads to room members excluding the sender.
+
+**Next Immediate Goal:**
+Implement Transient State (Typing Indicators) to understand realtime events that have a start and end lifecycle.
