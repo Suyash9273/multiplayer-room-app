@@ -202,3 +202,16 @@ We have successfully built the core chat pipeline.
 
 **Next Immediate Goal:**
 Implement Transient State (Typing Indicators) to understand realtime events that have a start and end lifecycle.
+
+---
+# CURRENT STATE: TRANSIENT STATE (COMPLETED)
+
+We successfully implemented debounced typing indicators.
+
+**Architectural Milestone Achieved:**
+- **Debouncing:** Utilized `useRef` and `setTimeout/clearTimeout` on the frontend to prevent network flooding, effectively transforming rapid keystrokes into singular "start" and "stop" events.
+- **Identity Trust:** The backend extracts the user's identity from the `$O(1)$` memory state (`socketToUser`) rather than trusting a frontend payload.
+- **Set State Mutation:** Used functional state updaters in React with `Set` conversion logic to safely add/remove typing users without stale-closure bugs.
+
+**Next Immediate Goal:**
+Implement Delivery Guarantees (Event Acknowledgments) to handle network failures and synchronize optimistic UI state.

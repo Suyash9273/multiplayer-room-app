@@ -48,9 +48,14 @@ export const initializeSocket = (httpServer: HttpServer) => {
         })
 
         //sending message
-        socket.on("sendMessage", (payload: ChatMessage) => {
+        socket.on("sendMessage", (payload: ChatMessage, callback) => {
             //routing the payload to everyone in the room except sender
             socket.to(payload.roomId).emit("receiveMessage", payload)
+
+            //Firing the acknowledgement callback back to the sender
+            if(callback) {
+                callback({status: "sent", id: payload.id})
+            }
         })
 
         //listening for typing events:->

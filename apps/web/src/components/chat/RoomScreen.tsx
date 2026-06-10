@@ -8,11 +8,11 @@ import { Input } from "@/components/ui/input"
 import { Send, LogOut } from "lucide-react"
 
 export default function RoomScreen() {
-  const { 
+  const {
     currentRoom, roomUsers, leaveRoom, messages, sendMessage, username,
-    emitTyping, emitStopTyping, typingUsers 
+    emitTyping, emitStopTyping, typingUsers
   } = useSocket()
-  
+
   const [messageInput, setMessageInput] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -38,7 +38,7 @@ export default function RoomScreen() {
   const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessageInput(e.target.value)
     emitTyping()
-    
+
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current)
     }
@@ -57,7 +57,7 @@ export default function RoomScreen() {
 
   return (
     <div className="flex h-screen w-full bg-background text-foreground">
-      
+
       {/* SIDEBAR */}
       <aside className="w-64 border-r flex flex-col bg-muted/20">
         <div className="h-14 flex items-center justify-between border-b px-4">
@@ -77,7 +77,7 @@ export default function RoomScreen() {
 
       {/* MAIN CHAT AREA */}
       <main className="flex-1 flex flex-col min-w-0">
-        
+
         {/* HEADER */}
         <div className="h-14 flex items-center justify-between border-b px-6 bg-muted/10">
           <h2 className="font-semibold">Room: {currentRoom}</h2>
@@ -91,13 +91,20 @@ export default function RoomScreen() {
         <ScrollArea className="flex-1 p-6">
           <div className="flex flex-col gap-4">
             {messages.map((msg) => (
-              <div 
-                key={msg.timestamp} 
+              <div
+                key={msg.id}
                 className={`flex flex-col max-w-[75%] ${msg.sender === username ? 'self-end items-end' : 'self-start items-start'}`}
               >
                 <span className="text-xs text-muted-foreground mb-1 px-1">{msg.sender}</span>
                 <div className={`p-3 rounded-lg ${msg.sender === username ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                   {msg.message}
+                </div>
+                <div>
+                  {msg.sender === username && (
+                    <span className="text-[10px] text-muted-foreground ml-2">
+                      {msg.status === "pending" ? "..." : "✓"}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -115,7 +122,7 @@ export default function RoomScreen() {
         {/* INPUT FORM */}
         <div className="p-4 border-t bg-background">
           <form onSubmit={handleSendMessage} className="flex gap-2 max-w-4xl mx-auto">
-            <Input 
+            <Input
               value={messageInput}
               onChange={handleTyping}
               placeholder="Type your message..."

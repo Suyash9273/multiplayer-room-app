@@ -53,14 +53,26 @@ export function SocketProvider({
 
     function sendMessage(message: string) {
         const payload: ChatMessage = {
+            id: crypto.randomUUID(),
             roomId:currentRoom,
             message,
             sender: username,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            status: "pending"
         }
+        setMessages((prev) => [...prev, payload])
 
-        setMessages((prevMessages) => [...prevMessages, payload])
-        socket.emit("sendMessage", payload)
+        socket.emit("sendMessage", payload, (receipt: {status: string, id: string}) => {
+            console.log("The server replied!!", receipt)
+            setMessages((prevMessages) => {
+                return prevMessages.map((message) => {
+                    if(message.id === receipt.id) {
+                        return {...message, status: "sent"}
+                    }
+                    return message
+                })
+            })
+        })
     }
 
     function emitTyping() {
