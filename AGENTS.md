@@ -229,3 +229,17 @@ We successfully implemented event acknowledgments (ACKs).
 
 **Next Immediate Goal:**
 Address the "Late Joiner" problem by introducing Persistence (Chat History).
+
+---
+
+# CURRENT STATE: PERSISTENCE - WRITE (COMPLETED)
+
+We successfully implemented the database layer to solve the "Amnesia" problem.
+
+**Architectural Milestone Achieved:**
+- **Monorepo DB Package:** Created a strictly-typed `@multiplayer/db` package using ESM (`NodeNext`).
+- **Prisma V7 Adapters:** Bypassed the heavy Rust engine by implementing the new `@prisma/adapter-pg` driver adapter, ensuring our database package is edge-ready.
+- **Background Writes:** Upgraded the Express socket router to perform asynchronous Network I/O, saving the `ChatMessage` payload to Supabase while maintaining zero-latency routing for the connected clients.
+
+**Next Immediate Goal:**
+Implement Persistence (The Read) to solve the "Late Joiner" problem by delivering chat history upon connection.
