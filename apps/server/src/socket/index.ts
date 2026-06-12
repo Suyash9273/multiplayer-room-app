@@ -1,5 +1,6 @@
-import {Server} from "socket.io"
-import type {Server as HttpServer} from "http"
+import { Server } from "socket.io"
+import { prisma } from "@multiplayer/db"
+import type { Server as HttpServer } from "http"
 import { addUser, removeUser, getOnlineUsers, joinRoom, leaveRoom, getUsersInRoom, socketToUser } from "./presence.js"
 import type { ChatMessage } from "@multiplayer/shared"
 
@@ -48,13 +49,30 @@ export const initializeSocket = (httpServer: HttpServer) => {
         })
 
         //sending message
-        socket.on("sendMessage", (payload: ChatMessage, callback) => {
-            //routing the payload to everyone in the room except sender
-            socket.to(payload.roomId).emit("receiveMessage", payload)
+        socket.on("sendMessage", async (payload: ChatMessage, callback) => {
 
-            //Firing the acknowledgement callback back to the sender
-            if(callback) {
-                callback({status: "sent", id: payload.id})
+            //(1. Persist First)
+            try {
+                // We explicitly use payload.id so the database UUID perfectly matches 
+                // the ID the frontend generated for the acknowledgement receipt!
+                await prisma.message.create({
+                    data: {
+                        id: payload.id,
+                        roomId: payload.roomId,
+                        message: payload.message,
+                        sender: payload.sender
+                    }
+                })
+
+                //(2. Broadcast is the second part) routing the payload to everyone in the room except sender
+                socket.to(payload.roomId).emit("receiveMessage", payload)
+
+                //(3. Acknowledgement) Firing the acknowledgement callback back to the sender
+                if (callback) {
+                    callback({ status: "sent", id: payload.id })
+                }
+            } catch (error) {
+                console.log("Failed to save the message to the database", error)
             }
         })
 
@@ -71,12 +89,12 @@ export const initializeSocket = (httpServer: HttpServer) => {
             // 2. Broadcasting the typing event to the room
             socket.to(roomId).emit("userStoppedTyping", username)
         })
-        
+
 
         //to fix the potential memory leak if user abruptly closes browser window
         socket.on("disconnecting", () => {
             socket.rooms.forEach((room) => {
-                if(room !== socket.id) {
+                if (room !== socket.id) {
                     leaveRoom(room, socket.id)
                 }
             })
@@ -90,7 +108,7 @@ export const initializeSocket = (httpServer: HttpServer) => {
         })
         //We would add more event listeners here in the future
     })
-    
+
     // Returning 'io' is a good practice in case the main file needs it later
     return io
 }
