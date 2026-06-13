@@ -25,14 +25,44 @@ export const initializeSocket = (httpServer: HttpServer) => {
         })
 
         //entering a room
-        socket.on("enterRoom", (roomId: string) => {
+        socket.on("enterRoom", async (roomId: string) => {
             //1. Network action
             socket.join(roomId)
 
             //2. Memory action
             joinRoom(roomId, socket.id)
 
-            //3. Scoped broadcasting
+            //3. 
+            const username = socketToUser.get(socket.id)
+            if (username) {
+                try {
+                    const sysMsg = await prisma.message.create({
+                        data: {
+                            roomId,
+                            message: `${username} joined the room.`,
+                            sender: "System",
+                            type: "SYSTEM"
+                        }
+                    })
+
+                    const formattedSysMsg: ChatMessage = {
+                        id: sysMsg.id,
+                        roomId: sysMsg.roomId,
+                        message: sysMsg.message,
+                        sender: sysMsg.sender,
+                        timestamp: sysMsg.createdAt.getTime(),
+                        status: "sent",
+                        type: "SYSTEM"
+                    }
+
+                    socket.to(roomId).emit("receiveMessage", formattedSysMsg)
+
+                } catch (error) {
+                    console.error(error)
+                }
+            }
+
+            //4. Scoped broadcasting
             io.to(roomId).emit("roomUsers", getUsersInRoom(roomId))
         })
 
@@ -92,12 +122,45 @@ export const initializeSocket = (httpServer: HttpServer) => {
 
 
         //to fix the potential memory leak if user abruptly closes browser window
-        socket.on("disconnecting", () => {
-            socket.rooms.forEach((room) => {
-                if (room !== socket.id) {
-                    leaveRoom(room, socket.id)
+        socket.on("disconnecting", async () => {
+            const username = socketToUser.get(socket.id)
+
+            for (const room of socket.rooms) {
+                if (room === socket.id) continue
+
+                if (username) {
+                    try {
+                        const sysMsg = await prisma.message.create({
+                            data: {
+                                roomId: room,
+                                message: `${username} left the room.`,
+                                sender: "System",
+                                type: "SYSTEM"
+                            }
+                        })
+
+                        const formattedSysMsg: ChatMessage = {
+                            id: sysMsg.id,
+                            roomId: sysMsg.roomId,
+                            message: sysMsg.message,
+                            sender: sysMsg.sender,
+                            timestamp: sysMsg.createdAt.getTime(),
+                            status: "sent",
+                            type: "SYSTEM"
+                        }
+
+                        socket.to(room).emit(
+                            "receiveMessage",
+                            formattedSysMsg
+                        )
+
+                    } catch (error) {
+                        console.error(error)
+                    }
                 }
-            })
+
+                leaveRoom(room, socket.id)
+            }
         })
 
         socket.on("disconnect", () => {

@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from "react"
 import {socket} from "@/lib/socket"
 import type { ChatMessage } from "@multiplayer/shared"
+import { timeStamp } from "console"
 export type SocketContextType = {
     onlineUsers: string[];
     roomUsers: string[];
@@ -41,6 +42,10 @@ export function SocketProvider({
     }
 
     function enterRoom(roomId: string) {
+        //1. fetch the room history
+        fetchRoomHistory(roomId)
+
+        //2. Connect to live stream via sockets
         socket.emit("enterRoom", roomId)
         setCurrentRoom(roomId)
     }
@@ -49,6 +54,35 @@ export function SocketProvider({
         socket.emit("leaveRoom", roomId)
         setCurrentRoom("")
         setTypingUsers([])
+    }
+
+    async function fetchRoomHistory(roomId: string) {
+        try {
+            const response = await fetch(`http://localhost:5000/api/rooms/${roomId}/messages`);
+            if(!response.ok) {
+                throw new Error("Failed to fetch room history")
+            }
+            //1. Get the raw history(different format than our ChatMessage)
+            const rawHistory = await response.json()
+
+            //2. The Adapter: Mold the DB rows into Frontend State
+            const formattedHistory: ChatMessage[] = rawHistory.map((dbMsg: any) => ({
+                id: dbMsg.id,
+                roomId: dbMsg.roomId,
+                message: dbMsg.message,
+                sender: dbMsg.sender,
+                //Convert the posgres std ISO string back to a std JS number
+                timeStamp: new Date(dbMsg.createdAt).getTime(),
+                //It is coming from db, so it is gauranteed to be sent
+                status: "sent",
+                type: dbMsg.type
+            }))
+
+            //3. Hand the perfectly formatted data to react
+            setMessages(formattedHistory)
+        } catch (error) {
+            console.log(`Error loading chat history: `, error)
+        }
     }
 
     function sendMessage(message: string) {
@@ -93,6 +127,7 @@ export function SocketProvider({
         })
 
         socket.on("receiveMessage", (payload: ChatMessage) => {
+            console.log(payload)
             setMessages((prev) => [...prev, payload])
         })
 

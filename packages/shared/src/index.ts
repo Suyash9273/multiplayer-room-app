@@ -4,5 +4,6 @@ export interface ChatMessage {
   message: string;
   sender: string;
   timestamp: number;
-  status: "pending" | "sent"; 
+  status: "pending" | "sent";
+  type?: "USER" | "SYSTEM"; //Added the discriminator
 }

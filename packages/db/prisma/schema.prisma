@@ -11,6 +11,7 @@ model Message {
   id        String   @id @default(uuid())
   roomId    String
   message   String
-  sender    String
+  sender    String // For system messages, we can just set this to system
+  type      String   @default("USER")
   createdAt DateTime @default(now())
 }

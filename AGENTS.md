@@ -243,3 +243,16 @@ We successfully implemented the database layer to solve the "Amnesia" problem.
 
 **Next Immediate Goal:**
 Implement Persistence (The Read) to solve the "Late Joiner" problem by delivering chat history upon connection.
+
+---
+
+# CURRENT STATE: PERSISTENCE - READ BACKEND (COMPLETED)
+
+We successfully built the REST API to serve historical data.
+
+**Architectural Milestone Achieved:**
+- **Separation of Protocols:** We decoupled data fetching from data streaming. We use HTTP `GET` requests to load heavy historical arrays, preserving our WebSocket connection purely for lightning-fast live deltas.
+- **Server Fusion:** Successfully attached the Express request handler to the raw Node HTTP server to serve both REST routes and Socket.IO upgrades on the same port.
+
+**Next Immediate Goal:**
+Connect the React frontend to the REST API to finally solve the "Late Joiner" problem on the screen.
