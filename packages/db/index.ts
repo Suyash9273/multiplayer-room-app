@@ -7,8 +7,8 @@ dotenv.config({
   path: path.resolve(process.cwd(), "../../packages/db/.env"),
 });
 
-// NEW: We explicitly target the client entry point
-import { PrismaClient } from "./generated/prisma/client.js";
+// FIX 1: Import from the standard Prisma client package
+import { PrismaClient } from "@prisma/client";
 
 // 1. Initialize a standard Node Postgres Pool
 const pool = new pg.Pool({
@@ -21,5 +21,5 @@ const adapter = new PrismaPg(pool);
 // 3. Instantiate and export the single Prisma client
 export const prisma = new PrismaClient({ adapter });
 
-// 4. Export all generated types (like the Message interface)
-export * from "./generated/prisma/client.js";
+// FIX 2: Re-export all types from the standard package
+export * from "@prisma/client";

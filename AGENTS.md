@@ -256,3 +256,17 @@ We successfully built the REST API to serve historical data.
 
 **Next Immediate Goal:**
 Connect the React frontend to the REST API to finally solve the "Late Joiner" problem on the screen.
+
+---
+
+# CURRENT STATE: PRESENCE & POLYMORPHIC UI (COMPLETED)
+
+We successfully implemented system-level event broadcasting and discriminator-based UI rendering.
+
+**Architectural Milestone Achieved:**
+- **Polymorphic Database Table:** Expanded the `Message` table with a `type` discriminator to store both User and System messages efficiently without complex SQL joins.
+- **Ghost Disconnect Handling:** Intercepted the Socket.IO `disconnecting` lifecycle to safely extract user data from memory maps, persist their departure to Postgres, and broadcast it before the socket is destroyed.
+- **Serialization Boundary Fix:** Upgraded the REST API fetcher to pass the `type` column through to React, ensuring historical data hydrates exactly like live WebSocket data.
+
+**Next Immediate Goal:**
+Decide on the next major architectural scaling vector (Data, Identity, or Infrastructure).

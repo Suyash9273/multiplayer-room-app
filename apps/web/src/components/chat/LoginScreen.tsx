@@ -1,88 +1,134 @@
 "use client"
 
-import NeonInput from "@/components/neonblade-ui/neon-input"
-import { Hexagons } from "@/components/neonblade-ui/hexagons"
-
 import { useState } from "react"
+import { useSession, signIn, signOut, authClient } from "@/lib/auth-client"
 import { useSocket } from "@/hooks/useSocket"
-import CornerCutButton from "../neonblade-ui/corner-cut-button"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-const LoginScreen = () => {
-  const [username, setUsername] = useState<string>("")
-  const { join } = useSocket()
+type ExtendedUser = {
+  id: string;
+  name: string;
+  email: string;
+  image?: string | null;
+  username?: string | null;
+};
 
-  return (
-    <div className="flex min-h-screen w-full items-center justify-center p-4">
+export default function LoginScreen() {
+  const { data: session, isPending } = useSession()
+  const { join } = useSocket() 
 
-      <Hexagons
-        hexColor="transparent"              // cell fill (rgba or hex)
-        hexBorderColor="rgba(0,243,255,0.2)"
-        hexSize={40}                        // circumradius in px
-        borderWidth={1}
+  // FIX 2: Use our clean interface instead of the complex typeof logic
+  const user = session?.user as ExtendedUser | undefined;
 
-        hoverEffect={true}                  // hover is tracked at document level —
-        // works even through z-stacked overlays
-        hoverColor="rgba(0,243,255,0.15)"   // fill color on hover
-        hoverBorderColor="#00f3ff"          // border color on hover ("" = no change)
+  const [usernameInput, setUsernameInput] = useState("")
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [errorMsg, setErrorMsg] = useState("")
 
-        borderGlowEffect={true}             // neon glow shadow on ALL borders
-        borderGlowColor="#00f3ff"           // glow color (independent of border color)
-        borderGlowRadius={10}               // glow blur radius in px
+  const handleGoogleLogin = async () => {
+    await signIn.social({ provider: "google", callbackURL: "/" })
+  }
 
-        beamEffect={true}                   // beams flowing along hex edges
-        beamColor="#00f3ff"                 // hex or rgba — both fully supported
-        beamGlowColor="#00f3ff"
-        maxBeams={20}
-        beamSpeed={2}
-        beamLength={80}
-        beamSpawnProbability={0.08}
+  const handleClaimUsername = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!usernameInput.trim()) return
+    
+    setIsUpdating(true)
+    setErrorMsg("")
 
-        overlay={true}                      // dark vignette overlay
-      />
+    // FIX 2: The Mutation Escape Hatch
+    // We cast the payload to `any` to force it past the strict frontend SDK
+    const payload = {
+      username: usernameInput.trim()
+    } as any;
 
-      <div className="relative z-10 flex w-full max-w-sm flex-col gap-6 border border-cyan-500/30 bg-[#0a0f14] p-6">
+    const { error } = await authClient.updateUser(payload)
 
-        <div className="relative z-10">
-          <h2 className="mb-1 font-orbitron text-xl uppercase text-cyan-400">
-            System Access
-          </h2>
-          <p className="text-sm text-cyan-400/65">
-            Enter your credentials to continue
-          </p>
-        </div>
+    setIsUpdating(false)
 
-        <form className="flex flex-col gap-5"
-          onSubmit={(e) => {
-            e.preventDefault()
-            join(username)
-          }}>
+    if (error) {
+      setErrorMsg(error.message || "Failed to claim username. It might be taken.")
+    }
+  }
 
-          <NeonInput
-            shape="corner-cut"
-            corner="tl-br"
-            cornerSize={10}
-            color="cyan"
-            label="Username"
-            placeholder="Enter username"
-            glowIntensity="strong"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
+  const handleEnterLobby = () => {
+    // We pass their CUSTOM username to the WebSockets!
+    if (user?.username) {
+      join(user.username) 
+    }
+  }
 
-          <CornerCutButton
-            color="cyan"
-            showArrow
-            hoverEffect="glow"
-            type="submit"
-          >
-            Join
-          </CornerCutButton>
-        </form>
+  // STATE 1: Loading
+  if (isPending) return <div className="flex h-screen items-center justify-center"><span className="animate-pulse">Verifying identity...</span></div>
 
+  // STATE 2: Unauthenticated
+  if (!user) {
+    return (
+      <div className="flex flex-col h-screen items-center justify-center bg-background">
+        <Card className="w-[350px]">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl">ChitChat</CardTitle>
+            <CardDescription>Secure multiplayer communication</CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center">
+            <Button className="w-full" onClick={handleGoogleLogin}>
+              Sign in with Google
+            </Button>
+          </CardContent>
+        </Card>
       </div>
+    )
+  }
 
+  // STATE 3A: Gatekeeper (Authenticated, but NO username)
+  if (!user.username) {
+    return (
+      <div className="flex flex-col h-screen items-center justify-center bg-background">
+        <Card className="w-[350px]">
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">Almost there!</CardTitle>
+            <CardDescription>Pick a unique gamer tag for the chat.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleClaimUsername} className="flex flex-col gap-3">
+              <Input
+                placeholder="e.g. Blade"
+                value={usernameInput}
+                onChange={(e) => setUsernameInput(e.target.value)}
+                disabled={isUpdating}
+                maxLength={20}
+              />
+              {errorMsg && <p className="text-xs text-red-500 font-medium text-center">{errorMsg}</p>}
+              <Button type="submit" disabled={isUpdating}>
+                {isUpdating ? "Claiming..." : "Claim Tag"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // STATE 3B: Ready (Authenticated AND has username)
+  return (
+    <div className="flex flex-col h-screen items-center justify-center bg-background">
+      <Card className="w-[350px]">
+        <CardHeader className="text-center">
+          <CardTitle className="text-xl">Welcome back,</CardTitle>
+          <CardDescription className="text-2xl text-primary font-bold mt-2">
+            {user.username}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <Button className="w-full" size="lg" onClick={handleEnterLobby}>
+            Enter Lobby
+          </Button>
+          <Button variant="ghost" className="w-full" onClick={() => signOut()}>
+            Sign Out
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   )
 }
-
-export default LoginScreen
