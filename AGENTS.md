@@ -270,3 +270,18 @@ We successfully implemented system-level event broadcasting and discriminator-ba
 
 **Next Immediate Goal:**
 Decide on the next major architectural scaling vector (Data, Identity, or Infrastructure).
+
+---
+
+# CURRENT STATE: IDENTITY & PROGRESSIVE PROFILING (COMPLETED)
+
+We successfully integrated Better Auth and built a progressive profiling pipeline.
+
+**Architectural Milestone Achieved:**
+- **OAuth Integration:** Implemented Google social login, storing users in Postgres via Prisma.
+- **Type-Safe Monorepo Bridge:** Created custom `ExtendedUser` interfaces to safely pass backend database types to the React frontend.
+- **The Gatekeeper Pattern:** Intercepted the React state machine. If an OAuth user lacks a custom `username`, they are trapped on an onboarding screen until they claim a unique tag, which is then safely written back to the database.
+- **Identity to Presence Handoff:** The verified `username` is now passed directly into the Socket.IO `join` payload.
+
+**Next Immediate Goal:**
+Secure the WebSocket layer. Implement Socket.IO Middleware to verify Better Auth session cookies on the Express backend, ensuring hackers cannot bypass the UI to spoof usernames.

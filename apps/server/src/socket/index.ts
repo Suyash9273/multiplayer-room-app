@@ -1,4 +1,5 @@
 import { Server } from "socket.io"
+import cookie from "cookie"
 import { prisma } from "@multiplayer/db"
 import type { Server as HttpServer } from "http"
 import { addUser, removeUser, getOnlineUsers, joinRoom, leaveRoom, getUsersInRoom, socketToUser } from "./presence.js"
@@ -8,8 +9,54 @@ export const initializeSocket = (httpServer: HttpServer) => {
     //1. Attach socket.io to the provided http server:
     const io = new Server(httpServer, {
         cors: {
-            origin: "*",
-            methods: ["GET", "POST"]
+            origin: "http://localhost:3000",
+            methods: ["GET", "POST"],
+            credentials: true
+        }
+    }) // io initialization
+
+    io.use(async (socket, next) => {
+        try {
+            //1. extracting raw cookies string from handshake headers
+            console.log("\n--- 🛡️ BOUNCER INTERCEPT ---");
+
+            const rawCookies = socket.request.headers.cookie
+            console.log("Raw Cookies received:", rawCookies ? "Yes" : "NO");
+
+            if (!rawCookies) {
+                return next(new Error("Authentication error: No cookies provided."));
+            }
+            //2. Parse the cookies:
+            const parsedCookies = cookie.parse(rawCookies)
+            const rawSessionToken = parsedCookies["better-auth.session_token"]
+
+            if (!rawSessionToken) {
+                return next(new Error("Authentication error: Session token missing."))
+            }
+
+            const sessionToken = rawSessionToken.split(".")[0]
+
+            console.log("Session-Token: ", sessionToken)
+
+            //3. Verify the token directly against the shared Postgres DB
+            const session = await prisma.session.findUnique({
+                where: { token: sessionToken },
+                include: { user: true }
+            })
+
+            // 4. Validate session existence and expiration
+            if (!session || session.expiresAt < new Date()) {
+                return next(new Error("Authentication Error: Session invalid or expired"))
+            }
+
+            //5. attach the securely verified Postgres user directly to the socket connection
+            socket.data.user = session.user
+            console.log("Hello-4----")
+            //Let them in
+            next()
+        } catch (error) {
+            console.error("Socket Middleware Error:", error);
+            next(new Error("Internal Server Error during authentication"));
         }
     })
 
@@ -17,7 +64,20 @@ export const initializeSocket = (httpServer: HttpServer) => {
     io.on("connection", (socket) => {
         console.log(`The user connected with id: ${socket.id}`)
 
-        socket.on("join", (username: string) => {
+        // We extract the verified identity that the Bouncer attached
+        const verifiedUser = socket.data.user;
+        const username = verifiedUser.username;
+
+        if (!username) {
+            // Edge case: They authenticated, but somehow bypassed the Gatekeeper UI
+            console.log(`User ${verifiedUser.email} has no username. Booting them.`);
+            socket.disconnect();
+            return;
+        }
+
+        console.log(`🟢 Verified connection: ${username} (${socket.id})`);
+
+        socket.on("join", () => {
             console.log(`Before addUser: ${getOnlineUsers()}`)
             addUser(username, socket.id)
             console.log(`After addUser: ${getOnlineUsers()}`)

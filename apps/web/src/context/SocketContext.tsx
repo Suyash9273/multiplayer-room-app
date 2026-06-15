@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState } from "react"
-import {socket} from "@/lib/socket"
+import { socket } from "@/lib/socket"
 import type { ChatMessage } from "@multiplayer/shared"
 import { timeStamp } from "console"
 export type SocketContextType = {
@@ -36,9 +36,16 @@ export function SocketProvider({
     const [typingUsers, setTypingUsers] = useState<string[]>([])
 
     function join(username: string) {
-        socket.emit("join", username)
-        setUsername(username)
-        setIsJoined(true)
+        socket.connect()
+
+        socket.once("connect", () => {
+            console.log("Socket connected:", socket.id)
+
+            socket.emit("join")
+
+            setUsername(username)
+            setIsJoined(true)
+        })
     }
 
     function enterRoom(roomId: string) {
@@ -59,7 +66,7 @@ export function SocketProvider({
     async function fetchRoomHistory(roomId: string) {
         try {
             const response = await fetch(`http://localhost:5000/api/rooms/${roomId}/messages`);
-            if(!response.ok) {
+            if (!response.ok) {
                 throw new Error("Failed to fetch room history")
             }
             //1. Get the raw history(different format than our ChatMessage)
@@ -88,7 +95,7 @@ export function SocketProvider({
     function sendMessage(message: string) {
         const payload: ChatMessage = {
             id: crypto.randomUUID(),
-            roomId:currentRoom,
+            roomId: currentRoom,
             message,
             sender: username,
             timestamp: Date.now(),
@@ -96,12 +103,12 @@ export function SocketProvider({
         }
         setMessages((prev) => [...prev, payload])
 
-        socket.emit("sendMessage", payload, (receipt: {status: string, id: string}) => {
+        socket.emit("sendMessage", payload, (receipt: { status: string, id: string }) => {
             console.log("The server replied!!", receipt)
             setMessages((prevMessages) => {
                 return prevMessages.map((message) => {
-                    if(message.id === receipt.id) {
-                        return {...message, status: "sent"}
+                    if (message.id === receipt.id) {
+                        return { ...message, status: "sent" }
                     }
                     return message
                 })
@@ -133,7 +140,7 @@ export function SocketProvider({
 
         socket.on("userTyping", (username: string) => {
             setTypingUsers((prev) => {
-                if(prev.includes(username)) return prev
+                if (prev.includes(username)) return prev
                 return [...prev, username]
             })
         })
@@ -156,21 +163,21 @@ export function SocketProvider({
 
     return (
         <SocketContext.Provider
-        value={{
-            onlineUsers,
-            roomUsers,
-            username,
-            messages,
-            isJoined,
-            currentRoom,
-            typingUsers,
-            join,
-            enterRoom,
-            leaveRoom,
-            sendMessage,
-            emitTyping,
-            emitStopTyping
-        }}>
+            value={{
+                onlineUsers,
+                roomUsers,
+                username,
+                messages,
+                isJoined,
+                currentRoom,
+                typingUsers,
+                join,
+                enterRoom,
+                leaveRoom,
+                sendMessage,
+                emitTyping,
+                emitStopTyping
+            }}>
             {children}
         </SocketContext.Provider>
     )
