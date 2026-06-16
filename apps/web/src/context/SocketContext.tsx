@@ -15,6 +15,7 @@ export type SocketContextType = {
     join: (username: string) => void;
     enterRoom: (roomId: string) => void;
     leaveRoom: (roomId: string) => void;
+    prependMessages: (historicalMessages: ChatMessage[]) => void;
     sendMessage: (message: string) => void;
     emitTyping: () => void;
     emitStopTyping: () => void;
@@ -124,6 +125,10 @@ export function SocketProvider({
         socket.emit("stopTyping", currentRoom)
     }
 
+    const prependMessages = (historicalMessages: ChatMessage[]) => {
+        setMessages((prev) => [...historicalMessages, ...prev]);
+    };
+
     useEffect(() => {
         socket.on("onlineUsers", (users) => {
             setOnlineUsers(users)
@@ -175,6 +180,7 @@ export function SocketProvider({
                 enterRoom,
                 leaveRoom,
                 sendMessage,
+                prependMessages,
                 emitTyping,
                 emitStopTyping
             }}>

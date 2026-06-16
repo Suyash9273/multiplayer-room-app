@@ -54,10 +54,7 @@ export default function LoginScreen() {
 
   const handleEnterLobby = () => {
     // We pass their CUSTOM username to the WebSockets!
-    console.log("handleEnterLobby me aa gya----")
-    console.log("This is User: -> ", user)
     if (user?.username) {
-      console.log("Entered inside the iff block")
       join(user.username) 
     }
   }
