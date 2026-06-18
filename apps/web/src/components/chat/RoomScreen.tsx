@@ -10,16 +10,17 @@ import { Send, LogOut } from "lucide-react"
 export default function RoomScreen() {
   const {
     currentRoom, roomUsers, leaveRoom, messages, sendMessage, username,
-    emitTyping, emitStopTyping, typingUsers, 
-    prependMessages // NEW: Pulled from context to update the global timeline
+    emitTyping, emitStopTyping, typingUsers,
+    prependMessages,// NEW: Pulled from context to update the global timeline
+    setMessagesFromHistory
   } = useSocket()
 
   const [messageInput, setMessageInput] = useState("")
-  
+
   // --- PAGINATION STATE ---
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [isFetchingHistory, setIsFetchingHistory] = useState(false)
-  const [hasMore, setHasMore] = useState(true)
+  const [hasMore, setHasMore] = useState(false)
 
   // --- DOM REFS ---
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -38,6 +39,17 @@ export default function RoomScreen() {
     }
   }, [lastMessageId]) // Dependency is now the LAST message, not the whole array!
 
+  // Load first page whenever user enters a room
+  useEffect(() => {
+    if (!currentRoom) return;
+
+    // Reset pagination state for the new room
+    setNextCursor(null);
+    setHasMore(true);
+
+    fetchHistoricalMessages(null);
+  }, [currentRoom]);
+
   // --- THE HISTORICAL FETCHER ---
   const fetchHistoricalMessages = async (cursor?: string | null) => {
     if (isFetchingHistory || !hasMore || !currentRoom) return;
@@ -53,15 +65,30 @@ export default function RoomScreen() {
 
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch history");
-      
+
       const data = await res.json();
 
       // 2. Update pagination pointers
       setNextCursor(data.nextCursor);
       if (!data.nextCursor) setHasMore(false);
 
-      // 3. Inject the data into the central Socket Context
-      prependMessages(data.messages);
+      const formattedHistory = data.messages.map((dbMsg: any) => ({
+        id: dbMsg.id,
+        roomId: dbMsg.roomId,
+        message: dbMsg.message,
+        sender: dbMsg.sender,
+        timestamp: new Date(dbMsg.createdAt).getTime(),
+        status: "sent",
+        type: dbMsg.type
+      }));
+
+      if (!cursor) {
+        // First page
+        setMessagesFromHistory(formattedHistory);
+      } else {
+        // Older pages
+        prependMessages(formattedHistory);
+      }
 
       // 4. THE SCROLL JUMP FIX
       // requestAnimationFrame waits for React to actually paint the new messages to the DOM
@@ -127,6 +154,11 @@ export default function RoomScreen() {
     return `Several people are typing...`
   }
 
+  console.log(
+    "MESSAGE IDS:",
+    messages.map(m => m.id)
+  )
+
   return (
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
       {/* SIDEBAR */}
@@ -161,14 +193,14 @@ export default function RoomScreen() {
 
         {/* MESSAGES CONTAINER */}
         {/* We replaced ScrollArea with a native div to gain precise control over scrollTop */}
-        <div 
-          ref={scrollContainerRef} 
+        <div
+          ref={scrollContainerRef}
           className="flex-1 overflow-y-auto p-6 flex flex-col gap-4"
         >
           {/* THE INVISIBLE TRIGGER */}
           {hasMore && (
             <div ref={observerTargetRef} className="h-8 w-full flex justify-center items-center shrink-0">
-               {isFetchingHistory && <span className="text-xs text-muted-foreground animate-pulse">Loading history...</span>}
+              {isFetchingHistory && <span className="text-xs text-muted-foreground animate-pulse">Loading history...</span>}
             </div>
           )}
 
@@ -203,7 +235,7 @@ export default function RoomScreen() {
               </div>
             );
           })}
-          
+
           {/* Bottom auto-scroll anchor */}
           <div ref={scrollBottomRef} />
         </div>
