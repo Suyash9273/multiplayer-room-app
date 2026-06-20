@@ -15,6 +15,7 @@ export const initializeSocket = (httpServer: HttpServer) => {
         }
     }) // io initialization
 
+    //socket middleware
     io.use(async (socket, next) => {
         try {
             //1. extracting raw cookies string from handshake headers

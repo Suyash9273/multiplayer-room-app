@@ -5,6 +5,7 @@ import express, { raw } from "express"
 import cors from "cors"
 import { Request, Response, NextFunction } from "express";
 import cookie from "cookie";
+import { resolve } from "path"
 
 const PORT = 5000
 
