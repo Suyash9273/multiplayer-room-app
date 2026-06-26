@@ -5,11 +5,13 @@ import LobbyScreen from "@/components/chat/LobbyScreen";
 import RoomScreen from "@/components/chat/RoomScreen";
 
 import { useRouter } from "next/navigation";
-import { useSocket } from "@/hooks/useSocket";
+import { useSessionStore } from "@/store/sessionStore"
 
 export default function Home() {
   const router = useRouter()
-  const {isJoined, currentRoom} = useSocket()
+  
+  const isJoined = useSessionStore((s) => s.isJoined)
+  const currentRoom = useSessionStore((s) => s.currentRoom)
 
   if(!isJoined) {
     return <LoginScreen/>

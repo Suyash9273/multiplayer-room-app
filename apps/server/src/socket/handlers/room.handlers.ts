@@ -1,9 +1,9 @@
 import { Server, Socket } from "socket.io";
 import { prisma } from "@multiplayer/db";
 import type { ChatMessage } from "@multiplayer/shared";
-import { 
-    addUser, getOnlineUsers, joinRoom, leaveRoom, 
-    getUsersInRoom, socketToUser 
+import {
+    addUser, getOnlineUsers, joinRoom, leaveRoom,
+    getUsersInRoom, socketToUser
 } from "../presence.js";
 
 export const registerRoomHandlers = (io: Server, socket: Socket) => {
@@ -47,11 +47,45 @@ export const registerRoomHandlers = (io: Server, socket: Socket) => {
         io.to(roomId).emit("roomUsers", getUsersInRoom(roomId));
     });
 
-    socket.on("leaveRoom", (roomId: string) => {
-        leaveRoom(roomId, socket.id);
-        socket.leave(roomId);
-        socket.to(roomId).emit("roomUsers", getUsersInRoom(roomId));
-    });
+    socket.on("leaveRoom", async (roomId: string) => {
+        const username = socketToUser.get(socket.id)
+
+        // memory + network first
+        leaveRoom(roomId, socket.id)
+        socket.leave(roomId)
+
+        // system message
+        if (username) {
+            try {
+                const sysMsg = await prisma.message.create({
+                    data: {
+                        roomId,
+                        message: `${username} left the room.`,
+                        sender: "System",
+                        type: "SYSTEM"
+                    }
+                })
+
+                const formattedSysMsg: ChatMessage = {
+                    id: sysMsg.id,
+                    roomId: sysMsg.roomId,
+                    message: sysMsg.message,
+                    sender: sysMsg.sender,
+                    timestamp: sysMsg.createdAt.getTime(),
+                    status: "sent",
+                    type: "SYSTEM"
+                }
+
+                // socket.leave already ran, so socket.to correctly
+                // reaches only the remaining members, not the leaver
+                socket.to(roomId).emit("receiveMessage", formattedSysMsg)
+            } catch (error) {
+                console.error(error)
+            }
+        }
+
+        socket.to(roomId).emit("roomUsers", getUsersInRoom(roomId))
+    })
 
     socket.on("sendMessage", async (payload: ChatMessage, callback) => {
         try {

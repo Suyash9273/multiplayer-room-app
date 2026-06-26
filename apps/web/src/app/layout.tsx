@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Inter, Orbitron, Share_Tech_Mono } from "next/font/google";
-import { SocketProvider } from "@/context/SocketContext";
+import { SocketInit } from "@/components/SocketInit"
 
 const inter = Inter({ subsets: ["latin"] });
 
-const orbitron = Orbitron({ 
+const orbitron = Orbitron({
   subsets: ["latin"],
   variable: "--font-orbitron",
 });
@@ -47,9 +47,8 @@ export default function RootLayout({
         2. Added 'overflow-hidden' to prevent the document body from ever scrolling.
       */}
       <body className="h-full overflow-hidden flex flex-col bg-background text-foreground font-sans">
-        <SocketProvider>
-          {children}
-        </SocketProvider>
+        <SocketInit />
+        {children}
       </body>
     </html>
   );

@@ -7,13 +7,26 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Send, LogOut } from "lucide-react"
 
+import { useSessionStore } from "@/store/sessionStore"
+import { usePresenceStore } from "@/store/presenceStore"
+import { useChatStore } from "@/store/chatStore"
+import { useTypingStore } from "@/store/typingStore"
+import {
+  leaveRoom,
+  sendMessage,
+  emitTyping,
+  emitStopTyping,
+} from "@/lib/socketActions"
+
+
 export default function RoomScreen() {
-  const {
-    currentRoom, roomUsers, leaveRoom, messages, sendMessage, username,
-    emitTyping, emitStopTyping, typingUsers,
-    prependMessages,// NEW: Pulled from context to update the global timeline
-    setMessagesFromHistory
-  } = useSocket()
+  const currentRoom = useSessionStore((s) => s.currentRoom)
+  const username = useSessionStore((s) => s.username)
+  const roomUsers = usePresenceStore((s) => s.roomUsers)
+  const messages = useChatStore((s) => s.messages)
+  const prependMessages = useChatStore((s) => s.prependMessages)
+  const setMessagesFromHistory = useChatStore((s) => s.setMessagesFromHistory)
+  const typingUsers = useTypingStore((s) => s.typingUsers)
 
   const [messageInput, setMessageInput] = useState("")
 

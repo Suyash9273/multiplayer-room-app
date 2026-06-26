@@ -2,10 +2,10 @@
 
 import { useState } from "react"
 import { useSession, signIn, signOut, authClient } from "@/lib/auth-client"
-import { useSocket } from "@/hooks/useSocket"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { join } from "@/lib/socketActions"
 
 type ExtendedUser = {
   id: string;
@@ -17,7 +17,6 @@ type ExtendedUser = {
 
 export default function LoginScreen() {
   const { data: session, isPending } = useSession()
-  const { join } = useSocket() 
 
   // FIX 2: Use our clean interface instead of the complex typeof logic
   const user = session?.user as ExtendedUser | undefined;

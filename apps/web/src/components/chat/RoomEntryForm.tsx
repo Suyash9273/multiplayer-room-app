@@ -4,10 +4,10 @@ import{ useState } from 'react'
 import { useSocket } from '@/hooks/useSocket'
 import CornerCutButton from '../neonblade-ui/corner-cut-button'
 import NeonInput from '../neonblade-ui/neon-input'
+import { enterRoom } from "@/lib/socketActions"
 
 const RoomEntryForm = () => {
   const [roomId, setRoomId] = useState<string>("")
-  const {enterRoom} = useSocket()
 
   return (
     <div className="flex w-full justify-center">
