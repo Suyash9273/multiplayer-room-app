@@ -46,9 +46,12 @@ export default function RootLayout({
         1. Changed 'min-h-full' to 'h-full' to rigidly lock the height.
         2. Added 'overflow-hidden' to prevent the document body from ever scrolling.
       */}
-      <body className="h-full overflow-hidden flex flex-col bg-background text-foreground font-sans">
+      <body className="h-screen overflow-hidden bg-background text-foreground font-sans">
         <SocketInit />
-        {children}
+
+        <main className="h-full overflow-y-auto">
+          {children}
+        </main>
       </body>
     </html>
   );

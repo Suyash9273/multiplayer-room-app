@@ -8,9 +8,12 @@ const PORT = 5000;
 const httpServer = http.createServer(app);
 
 // 2. Attach the socket to http server
-initializeSocket(httpServer);
+const io = initializeSocket(httpServer);
 
-// 3. Start the HTTP server
+//3. Attach the `io` instance to Express's global app state
+app.set("io", io)
+
+// 4. Start the HTTP server
 httpServer.listen(PORT, () => {
     console.log(`🚀 HTTP Server and Socket.IO are listening on port: ${PORT}`);
 });

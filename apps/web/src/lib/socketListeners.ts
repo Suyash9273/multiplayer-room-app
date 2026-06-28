@@ -2,6 +2,8 @@ import { socket } from "@/lib/socket"
 import { usePresenceStore } from "@/store/presenceStore"
 import { useChatStore } from "@/store/chatStore"
 import { useTypingStore } from "@/store/typingStore"
+import { useFriendStore, type PendingRequest } from "@/store/friendStore"
+
 import type { ChatMessage } from "@multiplayer/shared"
 
 export function registerSocketListeners() {
@@ -25,11 +27,16 @@ export function registerSocketListeners() {
         useTypingStore.getState().removeTypingUser(username)
     }
 
+    const onFriendRequestReceived = (request: PendingRequest) => {
+        useFriendStore.getState().addPendingRequest(request)
+    }
+
     socket.on("onlineUsers", onOnlineUsers)
     socket.on("roomUsers", onRoomUsers)
     socket.on("receiveMessage", onReceiveMessage)
     socket.on("userTyping", onUserTyping)
     socket.on("userStoppedTyping", onUserStoppedTyping)
+    socket.on("friendRequestReceived", onFriendRequestReceived)
 
     // return cleanup so whoever calls this can tear it down if needed
     return () => {
@@ -38,5 +45,6 @@ export function registerSocketListeners() {
         socket.off("receiveMessage", onReceiveMessage)
         socket.off("userTyping", onUserTyping)
         socket.off("userStoppedTyping", onUserStoppedTyping)
+        socket.off("friendRequestReceived", onFriendRequestReceived)
     }
 }

@@ -53,6 +53,9 @@ export const initializeSocket = (httpServer: HttpServer) => {
             return;
         }
 
+        //force the socket into a room named after their unique database ID
+        socket.join(`user:${verifiedUser.id}`)
+
         console.log(`🟢 Verified connection: ${username} (${socket.id})`);
 
         // --- REGISTER MODULAR HANDLERS ---
