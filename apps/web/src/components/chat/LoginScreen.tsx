@@ -52,9 +52,12 @@ export default function LoginScreen() {
   }
 
   const handleEnterLobby = () => {
-    // We pass their CUSTOM username to the WebSockets!
+    // We pass their CUSTOM username and the db userId to the WebSockets!
     if (user?.username) {
-      join(user.username) 
+      join({
+        username: user.username,
+        userId: user.id
+      }) 
     }
   }
 

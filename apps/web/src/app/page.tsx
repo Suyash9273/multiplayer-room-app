@@ -1,28 +1,24 @@
 "use client"
-
-import LoginScreen from "@/components/chat/LoginScreen";
-import LobbyScreen from "@/components/chat/LobbyScreen";
-import RoomScreen from "@/components/chat/RoomScreen";
-
-import { useRouter } from "next/navigation";
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { useSessionStore } from "@/store/sessionStore"
+import LoginScreen from "@/components/chat/LoginScreen"
 
 export default function Home() {
-  const router = useRouter()
-  
-  const isJoined = useSessionStore((s) => s.isJoined)
-  const currentRoom = useSessionStore((s) => s.currentRoom)
+    const isJoined = useSessionStore((s) => s.isJoined);
+    const router = useRouter();
 
-  if(!isJoined) {
-    return <LoginScreen/>
-  }
-  else if(isJoined && !currentRoom) {
-    return <LobbyScreen />
-  }
-  else if(isJoined && currentRoom) {
-    return <RoomScreen />
-  }
-  return (
-    <div></div>
-  )
+    useEffect(() => {
+        // If the user is already authenticated/joined, boot them to the lobby
+        if (isJoined) {
+            router.push("/lobby");
+        }
+    }, [isJoined, router]);
+
+    // If they aren't joined, just show the login screen
+    if (!isJoined) {
+        return <LoginScreen />;
+    }
+
+    return null; // Prevent UI flash while redirecting
 }

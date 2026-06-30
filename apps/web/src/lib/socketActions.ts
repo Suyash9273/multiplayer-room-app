@@ -3,21 +3,29 @@ import { useSessionStore } from "../store/sessionStore"
 import { useChatStore } from "../store/chatStore"
 import { useTypingStore } from "../store/typingStore"
 import type { ChatMessage } from "@multiplayer/shared"
+import { usePresenceStore } from "@/store/presenceStore"
 
-export function join(username: string) {
+export function join({username, userId} : {username: string, userId: string}) {
     socket.connect()
 
     socket.once("connect", () => {
         socket.emit("join")
+        useSessionStore.getState().setUserId(userId)
         useSessionStore.getState().setUsername(username)
         useSessionStore.getState().setIsJoined(true)
     })
 }
 
 export function enterRoom(roomId: string) {
+    const currentRoom = useSessionStore.getState().currentRoom
+
+    if(currentRoom === roomId) {
+      return
+    }
+
     useChatStore.getState().clearMessages()
-    socket.emit("enterRoom", roomId)
     useSessionStore.getState().setCurrentRoom(roomId)
+    socket.emit("enterRoom", roomId)
 }
 
 export function leaveRoom(roomId: string) {
@@ -25,6 +33,7 @@ export function leaveRoom(roomId: string) {
     useChatStore.getState().clearMessages()
     useTypingStore.getState().clearTypingUsers()
     useSessionStore.getState().setCurrentRoom("")
+    usePresenceStore.getState().setRoomUsers([])
 }
 
 export function sendMessage(message: string) {

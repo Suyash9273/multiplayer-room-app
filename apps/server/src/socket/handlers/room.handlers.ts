@@ -14,6 +14,13 @@ export const registerRoomHandlers = (io: Server, socket: Socket) => {
     });
 
     socket.on("enterRoom", async (roomId: string) => {
+        // THE BACKEND SHIELD: 
+        // socket.rooms is a native Set containing all rooms this socket is currently in.
+        if (socket.rooms.has(roomId)) {
+            console.log(`[SOCKET] User ${socket.id} attempted duplicate join for ${roomId}`);
+            return; // Silently abort! Do not broadcast a system message.
+        }
+
         socket.join(roomId);
         joinRoom(roomId, socket.id);
 

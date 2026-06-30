@@ -5,9 +5,21 @@ import { useSocket } from '@/hooks/useSocket'
 import CornerCutButton from '../neonblade-ui/corner-cut-button'
 import NeonInput from '../neonblade-ui/neon-input'
 import { enterRoom } from "@/lib/socketActions"
+import { useRouter } from "next/navigation";
 
 const RoomEntryForm = () => {
   const [roomId, setRoomId] = useState<string>("")
+  const router = useRouter()
+
+  const handleJoinRoom = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roomId.trim()) return;
+
+    enterRoom(roomId)
+    
+    // Instead of setCurrentRoom(roomInput), do this:
+    router.push(`/room/${roomId}`);
+};
 
   return (
     <div className="flex w-full justify-center">
@@ -23,10 +35,7 @@ const RoomEntryForm = () => {
           </div>
 
           <form className="flex flex-col gap-5"
-          onSubmit={(e) => {
-            e.preventDefault()
-            enterRoom(roomId)
-          }}
+          onSubmit={handleJoinRoom}
           >
             <NeonInput
               shape="corner-cut"

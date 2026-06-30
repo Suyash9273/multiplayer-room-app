@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
-import { useSocket } from "@/hooks/useSocket"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area" // Kept for sidebar
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,24 +10,29 @@ import { useSessionStore } from "@/store/sessionStore"
 import { usePresenceStore } from "@/store/presenceStore"
 import { useChatStore } from "@/store/chatStore"
 import { useTypingStore } from "@/store/typingStore"
+import { useFriendStore } from "@/store/friendStore" // NEW: Imported to look up friend names
 import {
   leaveRoom,
   sendMessage,
   emitTyping,
   emitStopTyping,
+  enterRoom
 } from "@/lib/socketActions"
+import { useRouter } from "next/navigation"
 
 
-export default function RoomScreen() {
-  const currentRoom = useSessionStore((s) => s.currentRoom)
+export default function RoomScreen({ roomId }: { roomId: string }) { // FIX: Destructure props correctly
   const username = useSessionStore((s) => s.username)
+  const currentUserId = useSessionStore((s) => s.userId) // NEW: Get current user ID
   const roomUsers = usePresenceStore((s) => s.roomUsers)
   const messages = useChatStore((s) => s.messages)
   const prependMessages = useChatStore((s) => s.prependMessages)
   const setMessagesFromHistory = useChatStore((s) => s.setMessagesFromHistory)
   const typingUsers = useTypingStore((s) => s.typingUsers)
+  const friends = useFriendStore((s) => s.friends) // NEW: Get friends list
 
   const [messageInput, setMessageInput] = useState("")
+  const router = useRouter()
 
   // --- PAGINATION STATE ---
   const [nextCursor, setNextCursor] = useState<string | null>(null)
@@ -41,39 +45,59 @@ export default function RoomScreen() {
   const scrollBottomRef = useRef<HTMLDivElement>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  // --- DM CONTEXT LOGIC ---
+  const isDirectMessage = roomId.startsWith("dm:");
+
+  
+  const chatTitle = useMemo(() => {
+      if (!isDirectMessage) return `Room: ${roomId}`; 
+      
+      const parts = roomId.split(":");
+      // Figure out which ID is the friend's ID
+      const targetUserId = parts[1] === currentUserId ? parts[2] : parts[1];
+      
+      // Look up the friend in the Zustand store using your actual Friend type
+      const friend = friends.find(f => f.user.id === targetUserId);
+      
+      // Grab their username, fallback if not found
+      const friendName = friend ? friend.user.username : "Unknown Friend";
+
+      return `Chat with ${friendName}`;
+  }, [roomId, isDirectMessage, currentUserId, friends]);
   // --- THE AUTO-SCROLL FIX ---
-  // We only want to scroll to the bottom when a BRAND NEW message arrives.
-  // By tracking the ID of the last message, we ignore history fetches (which prepend).
   const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
 
   useEffect(() => {
     if (scrollBottomRef.current) {
       scrollBottomRef.current.scrollIntoView({ behavior: "smooth" })
     }
-  }, [lastMessageId]) // Dependency is now the LAST message, not the whole array!
+  }, [lastMessageId]) 
 
   // Load first page whenever user enters a room
   useEffect(() => {
-    if (!currentRoom) return;
+    if (!roomId) return;
+    
+    // 1. Tell the Express backend to physically join the Socket.IO room
+    enterRoom(roomId);
 
-    // Reset pagination state for the new room
+    // 2. Reset pagination state for the new room
     setNextCursor(null);
     setHasMore(true);
 
+    // 3. Fetch history
     fetchHistoricalMessages(null);
-  }, [currentRoom]);
+  }, [roomId]);
 
   // --- THE HISTORICAL FETCHER ---
   const fetchHistoricalMessages = async (cursor?: string | null) => {
-    if (isFetchingHistory || !hasMore || !currentRoom) return;
+    if (isFetchingHistory || !hasMore || !roomId) return;
     setIsFetchingHistory(true);
 
     try {
-      // 1. Capture the exact height of the container BEFORE we add old messages
       const container = scrollContainerRef.current;
       const previousScrollHeight = container?.scrollHeight || 0;
       const API_BASE_URL = "http://localhost:5000";
-      let url = `${API_BASE_URL}/api/rooms/${currentRoom}/messages`;
+      let url = `${API_BASE_URL}/api/rooms/${roomId}/messages`;
       if (cursor) url += `?cursor=${cursor}`;
 
       const res = await fetch(url, { credentials: "include" });
@@ -81,7 +105,6 @@ export default function RoomScreen() {
 
       const data = await res.json();
 
-      // 2. Update pagination pointers
       setNextCursor(data.nextCursor);
       if (!data.nextCursor) setHasMore(false);
 
@@ -96,19 +119,14 @@ export default function RoomScreen() {
       }));
 
       if (!cursor) {
-        // First page
         setMessagesFromHistory(formattedHistory);
       } else {
-        // Older pages
         prependMessages(formattedHistory);
       }
 
-      // 4. THE SCROLL JUMP FIX
-      // requestAnimationFrame waits for React to actually paint the new messages to the DOM
       requestAnimationFrame(() => {
         if (container) {
           const newScrollHeight = container.scrollHeight;
-          // Shift the scrollbar down by the exact pixel height of the newly added DOM elements
           container.scrollTop = newScrollHeight - previousScrollHeight;
         }
       });
@@ -124,7 +142,6 @@ export default function RoomScreen() {
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        // If the invisible trigger div hits the screen, fetch more!
         if (entries[0].isIntersecting && !isFetchingHistory && hasMore) {
           fetchHistoricalMessages(nextCursor);
         }
@@ -137,7 +154,7 @@ export default function RoomScreen() {
     }
 
     return () => observer.disconnect();
-  }, [nextCursor, isFetchingHistory, hasMore, currentRoom]);
+  }, [nextCursor, isFetchingHistory, hasMore, roomId]);
 
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -167,45 +184,58 @@ export default function RoomScreen() {
     return `Several people are typing...`
   }
 
-  console.log(
-    "MESSAGE IDS:",
-    messages.map(m => m.id)
-  )
+  const handleLeaveRoom = () => {
+    // 1 & 2. Network and State Teardown
+    leaveRoom(roomId)
+
+    // 3. Routing Teardown: Send them back to the lobby
+    router.push("/lobby")
+  }
 
   return (
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
-      {/* SIDEBAR */}
-      <aside className="w-64 border-r flex flex-col bg-muted/20">
-        <div className="h-14 flex items-center justify-between border-b px-4 shrink-0">
-          <h2 className="font-semibold">Network</h2>
-          <span className="text-xs text-muted-foreground">{roomUsers.length} Active</span>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          <ScrollArea className="h-full p-4">
-            <div className="flex flex-col gap-2">
-              {roomUsers.map((user) => (
-                <div key={user} className="p-2 text-sm rounded-md bg-secondary text-secondary-foreground">
-                  {user}
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
-        </div>
-      </aside>
+      
+      {/* SIDEBAR - Conditionally hidden if it's a direct message */}
+      {!isDirectMessage && (
+        <aside className="w-64 border-r flex flex-col bg-muted/20">
+          <div className="h-14 flex items-center justify-between border-b px-4 shrink-0">
+            <h2 className="font-semibold">Network</h2>
+            <span className="text-xs text-muted-foreground">{roomUsers.length} Active</span>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <ScrollArea className="h-full p-4">
+              <div className="flex flex-col gap-2">
+                {roomUsers.map((user) => (
+                  <div key={user} className="p-2 text-sm rounded-md bg-secondary text-secondary-foreground">
+                    {user}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        </aside>
+      )}
 
       {/* MAIN CHAT AREA */}
       <main className="flex-1 flex flex-col min-w-0">
-        {/* HEADER */}
+        
+        {/* DYNAMIC HEADER */}
         <div className="h-14 flex items-center justify-between border-b px-6 bg-muted/10 shrink-0">
-          <h2 className="font-semibold">Room: {currentRoom}</h2>
-          <Button variant="outline" size="sm" onClick={() => leaveRoom(currentRoom)}>
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold">{chatTitle}</h2>
+            {isDirectMessage && (
+              <span className="text-xs text-muted-foreground bg-secondary px-2 py-1 rounded-full">
+                Private Connection
+              </span>
+            )}
+          </div>
+          <Button variant="outline" size="sm" onClick={handleLeaveRoom}>
             <LogOut className="mr-2 h-4 w-4" />
             Leave
           </Button>
         </div>
 
         {/* MESSAGES CONTAINER */}
-        {/* We replaced ScrollArea with a native div to gain precise control over scrollTop */}
         <div
           ref={scrollContainerRef}
           className="flex-1 overflow-y-auto p-6 flex flex-col gap-4"

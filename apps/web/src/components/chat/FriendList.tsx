@@ -1,5 +1,11 @@
 "use client"
 
+import { useRouter } from "next/navigation"
+import { getDMRoomId } from "@multiplayer/shared"
+import { useSessionStore } from "@/store/sessionStore"
+import { Button } from "@/components/ui/button"
+import { MessageSquare } from "lucide-react" // Or whatever icon library you use
+
 import { useFriendStore } from "@/store/friendStore"
 import { usePresenceStore } from "@/store/presenceStore"
 
@@ -18,6 +24,9 @@ export function FriendList() {
 
     // Calculate how many friends are online for the badge
     const onlineFriendsCount = friends.filter(f => onlineUsers.includes(f.user.username)).length
+
+    const router = useRouter();
+    const currentUserId = useSessionStore((s) => s.userId);
 
     return (
         <Card className="h-full">
