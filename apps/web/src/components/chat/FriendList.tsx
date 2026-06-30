@@ -28,6 +28,16 @@ export function FriendList() {
     const router = useRouter();
     const currentUserId = useSessionStore((s) => s.userId);
 
+    const handleMessageFriend = (friendId: string) => {
+        if (!currentUserId || !friendId) return;
+
+        // 1. Generate the deterministic ID
+        const dmRoomId = getDMRoomId(currentUserId, friendId);
+
+        // 2. Push them to the dynamic Next.js route!
+        router.push(`/room/${dmRoomId}`);
+    };
+
     return (
         <Card className="h-full">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
@@ -66,17 +76,28 @@ export function FriendList() {
                                                 </p>
                                             </div>
 
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-xs text-muted-foreground">
-                                                    {isOnline ? "Online" : "Offline"}
-                                                </span>
-
-                                                <div
-                                                    className={`h-2.5 w-2.5 rounded-full ${isOnline
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {isOnline ? "Online" : "Offline"}
+                                                    </span>
+                                                    <div
+                                                        className={`h-2.5 w-2.5 rounded-full ${isOnline
                                                             ? "bg-green-500"
                                                             : "bg-zinc-300 dark:bg-zinc-700"
-                                                        }`}
-                                                />
+                                                            }`}
+                                                    />
+                                                </div>
+
+                                                {/* THE NEW MESSAGE BUTTON */}
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    onClick={() => handleMessageFriend(friend.user.id)}
+                                                >
+                                                    <MessageSquare className="h-4 w-4 mr-2" />
+                                                    Message
+                                                </Button>
                                             </div>
                                         </div>
                                     );
