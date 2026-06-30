@@ -6,11 +6,46 @@ import { usePresenceStore } from "@/store/presenceStore"
 import { useSessionStore } from "@/store/sessionStore"
 
 import RoomEntryForm from "./RoomEntryForm"
-import { FriendManager } from "./FriendManager"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
+import { FriendList } from "./FriendList"
+import { FriendRequests } from "./FriendRequests"
+import { useEffect } from "react"
+import { BACKEND_URL } from "@/lib/socket"
+import { useFriendStore } from "@/store/friendStore"
+
 
 export default function LobbyScreen() {
     const username = useSessionStore((s) => s.username)
     const onlineUsers = usePresenceStore((s) => s.onlineUsers)
+
+    useEffect(() => {
+        const hydrateFriendData = async () => {
+            try {
+                // Fire both requests at the exact same time
+                const [pendingRes, friendsRes] = await Promise.all([
+                    fetch(`${BACKEND_URL}/api/friends/pending`, { credentials: "include" }),
+                    fetch(`${BACKEND_URL}/api/friends/list`, { credentials: "include" })
+                ]);
+
+                if (pendingRes.ok) {
+                    const pendingData = await pendingRes.json();
+                    useFriendStore.getState().setPendingRequests(pendingData);
+                }
+
+                if (friendsRes.ok) {
+                    const friendsData = await friendsRes.json();
+                    useFriendStore.getState().setFriends(friendsData);
+                }
+            } catch (error) {
+                console.error("Failed to hydrate friend system", error);
+            } finally {
+                // 🚀 Tell the UI the data is finished loading!
+                useFriendStore.getState().setHydrated(true);
+            }
+        };
+
+        hydrateFriendData();
+    }, []);
 
     return (
         <div className="container mx-auto max-w-6xl h-full py-10 space-y-6 px-4">
@@ -74,7 +109,29 @@ export default function LobbyScreen() {
 
             <Separator />
 
-            <FriendManager />
+            {/* BOTTOM ROW: The Personal Social Panel */}
+        <div className="w-full">
+            <h2 className="text-xl font-semibold mb-4">Social</h2>
+            
+            <Tabs defaultValue="friends" className="w-full">
+                <TabsList className="grid w-[400px] grid-cols-2 mb-4">
+                    <TabsTrigger value="friends">Friends List</TabsTrigger>
+                    <TabsTrigger value="requests">Pending Requests</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="friends">
+                    <div className="md:w-1/2">
+                        <FriendList />
+                    </div>
+                </TabsContent>
+                
+                <TabsContent value="requests">
+                    <div className="md:w-1/2">
+                        <FriendRequests />
+                    </div>
+                </TabsContent>
+            </Tabs>
+        </div>
 
         </div>
     )

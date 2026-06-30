@@ -106,6 +106,45 @@ router.get("/pending", requireAuth, async (req, res) => {
     }
 })
 
+// GET /api/friends/list
+router.get("/list", requireAuth, async (req, res) => {
+    try {
+        const userId = req.user!.id
+
+        // 1. Fetch all ACCEPTED friendships where you are involved
+        const friendships = await prisma.friendship.findMany({
+            where: {
+                status: "ACCEPTED",
+                OR: [
+                    {senderId: userId},
+                    {receiverId: userId}
+                ]
+            },
+            include: {
+                sender: {select: {id: true, username: true, name: true}},
+                receiver: {select: {id: true, username: true, name: true}}
+            }
+        })
+
+        // 2. Map the data to isolate the *other* person
+        // If I am the sender, my friend is the receiver. If I am the receiver, my friend is the sender.
+        const friendsList = friendships.map((f) => {
+            const isSender = f.senderId === userId;
+            const friendData = isSender ? f.receiver : f.sender;
+
+            return {
+                friendshipId: f.id,
+                user: friendData 
+            };
+        });
+
+        return res.status(200).json(friendsList);
+    } catch (error) {
+        console.error("Fetch Friends Error:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+})
+
 // POST /api/friends/accept
 router.post("/accept", requireAuth, async (req, res) => {
     try {
