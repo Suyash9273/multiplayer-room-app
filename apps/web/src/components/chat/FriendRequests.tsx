@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { FriendAcceptedPayload } from "@multiplayer/shared"
 
 export function FriendRequests() {
     const [receiverId, setReceiverId] = useState("")
@@ -47,10 +48,14 @@ export function FriendRequests() {
                 credentials: "include",
                 body: JSON.stringify({ friendshipId }),
             })
+            
             if (res.ok) {
+                const data: FriendAcceptedPayload = await res.json()
                 useFriendStore.getState().removePendingRequest(friendshipId)
-                // Note: To make the UI perfect, you would also manually fetch/add the new friend to the friends array here, 
-                // or rely on a socket event to push the new friend data to the receiver!
+                useFriendStore.getState().addFriend({
+                    friendshipId: data.friendshipId,
+                    user: data.friend
+                })
             }
         } catch (error) {
             console.error("Failed to accept", error)

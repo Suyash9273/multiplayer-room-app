@@ -14,7 +14,7 @@ export type Friend = {
     friendshipId: string;
     user: {
         id: string;
-        username: string;
+        username: string | null;
         name: string;
     };
 }
@@ -60,7 +60,7 @@ export const useFriendStore = create<FriendState>((set) => ({
 
     addFriend: (friend) =>
         set((state) => {
-            if (state.friends.some(f => f.friendshipId !== friend.friendshipId)) return state
+            if (state.friends.some(f => f.friendshipId === friend.friendshipId)) return state
             return { friends: [...state.friends, friend] }
         }),
     

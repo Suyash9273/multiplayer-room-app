@@ -23,7 +23,7 @@ export function FriendList() {
     const onlineUsers = usePresenceStore((state) => state.onlineUsers)
 
     // Calculate how many friends are online for the badge
-    const onlineFriendsCount = friends.filter(f => onlineUsers.includes(f.user.username)).length
+    const onlineFriendsCount = friends.filter(f => f.user.username && onlineUsers.includes(f.user.username)).length
 
     const router = useRouter();
     const currentUserId = useSessionStore((s) => s.userId);
@@ -60,7 +60,7 @@ export function FriendList() {
                                 </p>
                             ) : (
                                 friends.map((friend) => {
-                                    const isOnline = onlineUsers.includes(friend.user.username);
+                                    const isOnline = friend.user.username ? onlineUsers.includes(friend.user.username) : false;
 
                                     return (
                                         <div

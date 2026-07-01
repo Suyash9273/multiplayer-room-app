@@ -1,10 +1,8 @@
 "use client"
 
 import{ useState } from 'react'
-import { useSocket } from '@/hooks/useSocket'
 import CornerCutButton from '../neonblade-ui/corner-cut-button'
 import NeonInput from '../neonblade-ui/neon-input'
-import { enterRoom } from "@/lib/socketActions"
 import { useRouter } from "next/navigation";
 
 const RoomEntryForm = () => {
@@ -14,8 +12,6 @@ const RoomEntryForm = () => {
   const handleJoinRoom = (e: React.FormEvent) => {
     e.preventDefault();
     if (!roomId.trim()) return;
-
-    enterRoom(roomId)
     
     // Instead of setCurrentRoom(roomInput), do this:
     router.push(`/room/${roomId}`);

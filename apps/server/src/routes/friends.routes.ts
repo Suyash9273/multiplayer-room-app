@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "@multiplayer/db";
 import { requireAuth } from "../middleware/auth.js";
+import { FriendAcceptedPayload } from "@multiplayer/shared";
 
 const router = Router()
 
@@ -170,16 +171,24 @@ router.post("/accept", requireAuth, async (req, res) => {
             data: { status: "ACCEPTED" }
         })
 
+        // After updating the friendship, fetch the receiver's data
+        const receiver = await prisma.user.findUnique({
+            where: {id: userId},
+            select: {id: true, username: true, name: true}
+        })
+
+        const payload: FriendAcceptedPayload = {
+            friendshipId: updatedFriendship.id,
+            friend: receiver!
+        }
+
         // 3. (Optional Realtime) Notify the sender that their request was accepted!
         const io = req.app.get("io")
         if (io) {
-            io.to(`user:${friendship.senderId}`).emit("friendRequestAccepted", {
-                friendshipId: updatedFriendship.id,
-                receiverId: userId
-            })
+            io.to(`user:${friendship.senderId}`).emit("friendRequestAccepted", payload)
         }
 
-        return res.status(200).json({ success: true, friendship: updatedFriendship })
+        return res.status(200).json({ success: true, ...payload})
     } catch (error) {
         console.error("Accept Request Error:", error)
         return res.status(500).json({ error: "Internal Server Error" })

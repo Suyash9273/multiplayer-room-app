@@ -12,3 +12,12 @@ export const getDMRoomId = (userId1: string, userId2: string) => {
   const sortedIds = [userId1, userId2].sort()
   return `dm:${sortedIds[0]}:${sortedIds[1]}`
 }
+
+export interface FriendAcceptedPayload {
+    friendshipId: string;
+    friend: {
+        id: string;
+        username: string | null;
+        name: string ;
+    }
+}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useMemo } from "react"
+import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area" // Kept for sidebar
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +19,7 @@ import {
   enterRoom
 } from "@/lib/socketActions"
 import { useRouter } from "next/navigation"
+import { BACKEND_URL } from "@/lib/socket"
 
 
 export default function RoomScreen({ roomId }: { roomId: string }) { // FIX: Destructure props correctly
@@ -48,21 +49,21 @@ export default function RoomScreen({ roomId }: { roomId: string }) { // FIX: Des
   // --- DM CONTEXT LOGIC ---
   const isDirectMessage = roomId.startsWith("dm:");
 
-  
-  const chatTitle = useMemo(() => {
-      if (!isDirectMessage) return `Room: ${roomId}`; 
-      
-      const parts = roomId.split(":");
-      // Figure out which ID is the friend's ID
-      const targetUserId = parts[1] === currentUserId ? parts[2] : parts[1];
-      
-      // Look up the friend in the Zustand store using your actual Friend type
-      const friend = friends.find(f => f.user.id === targetUserId);
-      
-      // Grab their username, fallback if not found
-      const friendName = friend ? friend.user.username : "Unknown Friend";
 
-      return `Chat with ${friendName}`;
+  const chatTitle = useMemo(() => {
+    if (!isDirectMessage) return `Room: ${roomId}`;
+
+    const parts = roomId.split(":");
+    // Figure out which ID is the friend's ID
+    const targetUserId = parts[1] === currentUserId ? parts[2] : parts[1];
+
+    // Look up the friend in the Zustand store using your actual Friend type
+    const friend = friends.find(f => f.user.id === targetUserId);
+
+    // Grab their username, fallback if not found
+    const friendName = friend ? friend.user.username : "Unknown Friend";
+
+    return `Chat with ${friendName}`;
   }, [roomId, isDirectMessage, currentUserId, friends]);
   // --- THE AUTO-SCROLL FIX ---
   const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
@@ -71,12 +72,12 @@ export default function RoomScreen({ roomId }: { roomId: string }) { // FIX: Des
     if (scrollBottomRef.current) {
       scrollBottomRef.current.scrollIntoView({ behavior: "smooth" })
     }
-  }, [lastMessageId]) 
+  }, [lastMessageId])
 
   // Load first page whenever user enters a room
   useEffect(() => {
     if (!roomId) return;
-    
+
     // 1. Tell the Express backend to physically join the Socket.IO room
     enterRoom(roomId);
 
@@ -89,15 +90,15 @@ export default function RoomScreen({ roomId }: { roomId: string }) { // FIX: Des
   }, [roomId]);
 
   // --- THE HISTORICAL FETCHER ---
-  const fetchHistoricalMessages = async (cursor?: string | null) => {
+
+  const fetchHistoricalMessages = useCallback(async (cursor?: string | null) => {
     if (isFetchingHistory || !hasMore || !roomId) return;
     setIsFetchingHistory(true);
 
     try {
       const container = scrollContainerRef.current;
       const previousScrollHeight = container?.scrollHeight || 0;
-      const API_BASE_URL = "http://localhost:5000";
-      let url = `${API_BASE_URL}/api/rooms/${roomId}/messages`;
+      let url = `${BACKEND_URL}/api/rooms/${roomId}/messages`;
       if (cursor) url += `?cursor=${cursor}`;
 
       const res = await fetch(url, { credentials: "include" });
@@ -136,7 +137,7 @@ export default function RoomScreen({ roomId }: { roomId: string }) { // FIX: Des
     } finally {
       setIsFetchingHistory(false);
     }
-  };
+  }, [roomId, hasMore, isFetchingHistory, prependMessages, setMessagesFromHistory])
 
   // --- THE INTERSECTION OBSERVER ---
   useEffect(() => {
@@ -194,7 +195,7 @@ export default function RoomScreen({ roomId }: { roomId: string }) { // FIX: Des
 
   return (
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
-      
+
       {/* SIDEBAR - Conditionally hidden if it's a direct message */}
       {!isDirectMessage && (
         <aside className="w-64 border-r flex flex-col bg-muted/20">
@@ -218,7 +219,7 @@ export default function RoomScreen({ roomId }: { roomId: string }) { // FIX: Des
 
       {/* MAIN CHAT AREA */}
       <main className="flex-1 flex flex-col min-w-0">
-        
+
         {/* DYNAMIC HEADER */}
         <div className="h-14 flex items-center justify-between border-b px-6 bg-muted/10 shrink-0">
           <div className="flex items-center gap-3">
