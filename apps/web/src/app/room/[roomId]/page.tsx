@@ -2,30 +2,40 @@
 import { use, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useSessionStore } from "@/store/sessionStore"
+import { useSession } from "@/lib/auth-client"
 import RoomScreen from "@/components/chat/RoomScreen"
 
 export default function RoomPage({params}: {params: Promise<{roomId: string}>}) {
     const isJoined = useSessionStore((state) => state.isJoined)
+    const { data: session, isPending } = useSession()
     const router = useRouter()
     const {roomId} = use(params)
-    // CRITICAL FIX: Next.js automatically URL-encodes colons in dynamic routes.
-    // So "dm:123:456" becomes "dm%3A123%3A456" in the URL.
-    // We must decode it before passing it to your RoomScreen and Socket!
 
     const decodedRoomId = decodeURIComponent(roomId)
 
     useEffect(() => {
-        // Protect the route from unauthenticated users
-        if (!isJoined) {
-            router.push("/");
+        if (isPending) return;
+
+        if (!session?.user) {
+            router.push("/")
+            return
         }
-        else {
-            // CRITICAL: Sync the URL state into your Zustand store, now we socket knows which room to send messages
+
+        if (isJoined) {
             useSessionStore.getState().setCurrentRoom(decodedRoomId)
         }
-    }, [isJoined, router]);
+    }, [isPending, session, isJoined, router, decodedRoomId]);
 
-    if (!isJoined) return null;
+    if (isPending) return null;
+    if (!session?.user) return null;
+
+    if (!isJoined) {
+        return (
+            <div className="flex h-screen items-center justify-center">
+                <span className="animate-pulse">Reconnecting...</span>
+            </div>
+        );
+    }
 
     return <RoomScreen roomId={decodedRoomId} />;
 }

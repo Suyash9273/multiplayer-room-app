@@ -118,7 +118,10 @@ export default function RoomScreen({ roomId }: { roomId: string }) { // FIX: Des
         sender: dbMsg.sender,
         timestamp: new Date(dbMsg.createdAt).getTime(),
         status: "sent",
-        type: dbMsg.type
+        type: dbMsg.type,
+
+        isRead: dbMsg.isRead,
+        readAt: dbMsg.readAt ? new Date(dbMsg.readAt).getTime() : undefined
       }));
 
       if (!cursor) {
@@ -274,10 +277,10 @@ export default function RoomScreen({ roomId }: { roomId: string }) { // FIX: Des
                 <div>
                   {isMe && (
                     <span className="text-[10px] text-muted-foreground ml-2">
-                      {msg.status === "pending" ? "..." : 
+                      {msg.status === "pending" ? "..." :
                         isDMRoom && msg.isRead
-                        ? "✓✓ Read"
-                        : "✓ Sent"
+                          ? "✓✓ Read"
+                          : "✓ Sent"
                       }
                     </span>
                   )}

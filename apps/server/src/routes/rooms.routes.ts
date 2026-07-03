@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "@multiplayer/db";
+import { isAuthorizedForRoom } from "../socket/dmAuth.js";
 
 const router = Router()
 
@@ -9,6 +10,10 @@ router.get("/:roomId/messages", requireAuth, async (req: Request, res: Response)
     try {
         const roomId = req.params.roomId as string;
         const cursor = req.query.cursor as string | undefined;
+
+        if (!isAuthorizedForRoom(roomId, req.user!.id)) {
+            return res.status(403).json({ error: "Forbidden" });
+        }
 
         const messages = await prisma.message.findMany({
             where: { roomId },

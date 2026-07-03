@@ -6,6 +6,8 @@ import {
     getUsersInRoom, socketToUser
 } from "../presence.js";
 
+import { isAuthorizedForRoom } from "../dmAuth.js";
+
 export const registerRoomHandlers = (io: Server, socket: Socket) => {
     socket.on("join", () => {
         const username = socket.data.user.username;
@@ -16,6 +18,12 @@ export const registerRoomHandlers = (io: Server, socket: Socket) => {
     socket.on("enterRoom", async (roomId: string) => {
         // THE BACKEND SHIELD: 
         // socket.rooms is a native Set containing all rooms this socket is currently in.
+
+        if (!isAuthorizedForRoom(roomId, socket.data.user.id)) {
+            console.warn(`[SECURITY] ${socket.data.user.username} denied entry to ${roomId}`);
+            return; // silently refuse — don't leak whether the room "exists"
+        }
+
         if (socket.rooms.has(roomId)) {
             console.log(`[SOCKET] User ${socket.id} attempted duplicate join for ${roomId}`);
             return; // Silently abort! Do not broadcast a system message.
@@ -117,15 +125,27 @@ export const registerRoomHandlers = (io: Server, socket: Socket) => {
     })
 
     socket.on("sendMessage", async (payload: ChatMessage, callback) => {
+        
+        if (!isAuthorizedForRoom(payload.roomId, socket.data.user.id)) {
+            console.warn(`[SECURITY] ${socket.data.user.username} tried to send into ${payload.roomId} without access`);
+            return;
+        }
+
         try {
+            const trustedSender = socket.data.user.username
             const savedMessage = await prisma.message.create({
                 data: {
                     id: payload.id,
                     roomId: payload.roomId,
                     message: payload.message,
-                    sender: payload.sender
+                    sender: trustedSender
                 }
             });
+
+            const trustedPayload: ChatMessage = {
+                ...payload,
+                sender: trustedSender,
+            };
 
             // ADD THIS BLOCK ↓
             if (payload.roomId.startsWith("dm:")) {
@@ -146,7 +166,7 @@ export const registerRoomHandlers = (io: Server, socket: Socket) => {
             }
             // ADD THIS BLOCK END ↑
 
-            socket.to(payload.roomId).emit("receiveMessage", payload);
+            socket.to(payload.roomId).emit("receiveMessage", trustedPayload);
 
             if (callback) {
                 callback({ status: "sent", id: payload.id });
