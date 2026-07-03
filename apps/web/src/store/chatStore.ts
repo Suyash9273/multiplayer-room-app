@@ -8,6 +8,7 @@ type ChatState = {
     prependMessages: (messages: ChatMessage[]) => void;
     setMessagesFromHistory: (messages: ChatMessage[]) => void;
     clearMessages: () => void;
+    markRoomMessagesAsRead: (roomId: string, readAt: number) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -23,5 +24,14 @@ export const useChatStore = create<ChatState>((set) => ({
     prependMessages: (incoming) =>
         set((state) => ({ messages: [...incoming, ...state.messages] })),
     setMessagesFromHistory: (messages) => set({messages}),
-    clearMessages: () => set({messages: []})
+    clearMessages: () => set({messages: []}),
+
+    markRoomMessagesAsRead: (roomId: string, readAt: number) =>
+    set((state) => ({
+        messages: state.messages.map((msg) =>
+            msg.roomId === roomId
+                ? { ...msg, isRead: true, readAt }
+                : msg
+        )
+    }))
 }))

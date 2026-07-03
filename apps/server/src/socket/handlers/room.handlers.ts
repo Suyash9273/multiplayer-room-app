@@ -24,6 +24,28 @@ export const registerRoomHandlers = (io: Server, socket: Socket) => {
         socket.join(roomId);
         joinRoom(roomId, socket.id);
 
+        if (roomId.startsWith("dm:")) {
+            // Mark all unread messages in this room as read (where sender is NOT current user)
+            const updated = await prisma.message.updateMany({
+                where: {
+                    roomId,
+                    isRead: false,
+                    NOT: { sender: socket.data.user.username }
+                },
+                data: {
+                    isRead: true,
+                    readAt: new Date()
+                }
+            })
+
+            if (updated.count > 0) {
+                io.to(roomId).except(socket.id).emit("messagesRead", {
+                    roomId,
+                    readAt: Date.now()
+                })
+            }
+        }
+
         const username = socketToUser.get(socket.id);
         if (username) {
             try {
@@ -96,7 +118,7 @@ export const registerRoomHandlers = (io: Server, socket: Socket) => {
 
     socket.on("sendMessage", async (payload: ChatMessage, callback) => {
         try {
-            await prisma.message.create({
+            const savedMessage = await prisma.message.create({
                 data: {
                     id: payload.id,
                     roomId: payload.roomId,
@@ -104,6 +126,25 @@ export const registerRoomHandlers = (io: Server, socket: Socket) => {
                     sender: payload.sender
                 }
             });
+
+            // ADD THIS BLOCK ↓
+            if (payload.roomId.startsWith("dm:")) {
+                const socketsInRoom = await io.in(payload.roomId).fetchSockets()
+                const otherPersonIsPresent = socketsInRoom.some(s => s.id !== socket.id)
+
+                if (otherPersonIsPresent) {
+                    await prisma.message.update({
+                        where: { id: savedMessage.id },
+                        data: { isRead: true, readAt: new Date() }
+                    })
+                    // Tell the sender their message was instantly read
+                    socket.emit("messagesRead", {
+                        roomId: payload.roomId,
+                        readAt: Date.now()
+                    })
+                }
+            }
+            // ADD THIS BLOCK END ↑
 
             socket.to(payload.roomId).emit("receiveMessage", payload);
 

@@ -6,6 +6,9 @@ export interface ChatMessage {
   timestamp: number;
   status: "pending" | "sent";
   type?: "USER" | "SYSTEM"; //Added the discriminator
+
+  isRead?: boolean;   // add
+  readAt?: number;    // add (unix timestamp like the rest)
 }
 
 export const getDMRoomId = (userId1: string, userId2: string) => {

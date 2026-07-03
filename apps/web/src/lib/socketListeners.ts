@@ -39,6 +39,10 @@ export function registerSocketListeners() {
         })
     }
 
+    const onMessagesRead = ({ roomId, readAt }: { roomId: string, readAt: number }) => {
+        useChatStore.getState().markRoomMessagesAsRead(roomId, readAt)
+    }
+
     socket.on("onlineUsers", onOnlineUsers)
     socket.on("roomUsers", onRoomUsers)
     socket.on("receiveMessage", onReceiveMessage)
@@ -46,6 +50,7 @@ export function registerSocketListeners() {
     socket.on("userStoppedTyping", onUserStoppedTyping)
     socket.on("friendRequestReceived", onFriendRequestReceived)
     socket.on("friendRequestAccepted", onFriendRequestAccepted)
+    socket.on("messagesRead", onMessagesRead)
 
     // return cleanup so whoever calls this can tear it down if needed
     return () => {
@@ -56,5 +61,6 @@ export function registerSocketListeners() {
         socket.off("userStoppedTyping", onUserStoppedTyping)
         socket.off("friendRequestReceived", onFriendRequestReceived)
         socket.off("friendRequestAccepted", onFriendRequestAccepted)
+        socket.off("messagesRead", onMessagesRead)
     }
 }

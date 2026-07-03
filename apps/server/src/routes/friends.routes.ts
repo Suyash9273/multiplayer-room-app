@@ -9,19 +9,21 @@ const router = Router()
 router.post("/request", requireAuth, async (req, res) => {
     try {
         const senderId = req.user!.id
-        const { receiverId } = req.body
+        const { username } = req.body  // changed from receiverId
 
-        if (senderId === receiverId) {
-            return res.status(400).json({ error: "Cannot send a friend request to yourself" });
-        }
-
-        //1. Validate if receiver exists or not
+        // Find the receiver by username
         const receiver = await prisma.user.findUnique({
-            where: { id: receiverId }
+            where: { username }
         })
 
         if (!receiver) {
             return res.status(404).json({ error: "User not found" });
+        }
+
+        const receiverId = receiver.id
+
+        if (senderId === receiverId) {
+            return res.status(400).json({ error: "Cannot send a friend request to yourself" });
         }
 
         // 2. Check if a friendship/request already exists in either direction
@@ -117,13 +119,13 @@ router.get("/list", requireAuth, async (req, res) => {
             where: {
                 status: "ACCEPTED",
                 OR: [
-                    {senderId: userId},
-                    {receiverId: userId}
+                    { senderId: userId },
+                    { receiverId: userId }
                 ]
             },
             include: {
-                sender: {select: {id: true, username: true, name: true}},
-                receiver: {select: {id: true, username: true, name: true}}
+                sender: { select: { id: true, username: true, name: true } },
+                receiver: { select: { id: true, username: true, name: true } }
             }
         })
 
@@ -135,7 +137,7 @@ router.get("/list", requireAuth, async (req, res) => {
 
             return {
                 friendshipId: f.id,
-                user: friendData 
+                user: friendData
             };
         });
 
@@ -173,8 +175,8 @@ router.post("/accept", requireAuth, async (req, res) => {
 
         // After updating the friendship, fetch the receiver's data
         const receiver = await prisma.user.findUnique({
-            where: {id: userId},
-            select: {id: true, username: true, name: true}
+            where: { id: userId },
+            select: { id: true, username: true, name: true }
         })
 
         const payload: FriendAcceptedPayload = {
@@ -188,7 +190,7 @@ router.post("/accept", requireAuth, async (req, res) => {
             io.to(`user:${friendship.senderId}`).emit("friendRequestAccepted", payload)
         }
 
-        return res.status(200).json({ success: true, ...payload})
+        return res.status(200).json({ success: true, ...payload })
     } catch (error) {
         console.error("Accept Request Error:", error)
         return res.status(500).json({ error: "Internal Server Error" })

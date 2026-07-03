@@ -32,6 +32,8 @@ export default function RoomScreen({ roomId }: { roomId: string }) { // FIX: Des
   const typingUsers = useTypingStore((s) => s.typingUsers)
   const friends = useFriendStore((s) => s.friends) // NEW: Get friends list
 
+  const isDMRoom = roomId.startsWith("dm:")
+
   const [messageInput, setMessageInput] = useState("")
   const router = useRouter()
 
@@ -272,7 +274,11 @@ export default function RoomScreen({ roomId }: { roomId: string }) { // FIX: Des
                 <div>
                   {isMe && (
                     <span className="text-[10px] text-muted-foreground ml-2">
-                      {msg.status === "pending" ? "..." : "✓"}
+                      {msg.status === "pending" ? "..." : 
+                        isDMRoom && msg.isRead
+                        ? "✓✓ Read"
+                        : "✓ Sent"
+                      }
                     </span>
                   )}
                 </div>

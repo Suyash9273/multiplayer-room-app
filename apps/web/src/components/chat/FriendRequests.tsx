@@ -13,14 +13,14 @@ import { Separator } from "@/components/ui/separator"
 import { FriendAcceptedPayload } from "@multiplayer/shared"
 
 export function FriendRequests() {
-    const [receiverId, setReceiverId] = useState("")
+    const [username, setUsername] = useState("")
     const [statusMsg, setStatusMsg] = useState("")
     
     const pendingRequests = useFriendStore((state) => state.pendingRequests)
 
     const handleSendRequest = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!receiverId.trim()) return
+        if (!username.trim()) return
         
         setStatusMsg("Sending...")
         try {
@@ -28,13 +28,13 @@ export function FriendRequests() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
-                body: JSON.stringify({ receiverId }),
+                body: JSON.stringify({ username }),
             })
             const data = await res.json()
             if (!res.ok) throw new Error(data.error || "Failed to send request")
             
             setStatusMsg("✅ Request sent")
-            setReceiverId("")
+            setUsername("")
         } catch (err: any) {
             setStatusMsg(`❌ ${err.message}`)
         }
@@ -90,8 +90,8 @@ export function FriendRequests() {
                     <form onSubmit={handleSendRequest} className="flex gap-2">
                         <Input 
                             placeholder="Enter User ID..." 
-                            value={receiverId}
-                            onChange={(e) => setReceiverId(e.target.value)}
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
                         />
                         <Button type="submit">Send</Button>
                     </form>

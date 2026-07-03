@@ -13,6 +13,9 @@ model Message {
   sender    String // For system messages, we can just set this to system
   type      String   @default("USER")
   createdAt DateTime @default(now())
+
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
 }
 
 // --- BETTER AUTH CORE TABLES ---
