@@ -6,176 +6,119 @@ import {
     getUsersInRoom, socketToUser
 } from "../presence.js";
 
-import { isAuthorizedForRoom } from "../dmAuth.js";
+// You can likely deprecate dmAuth.js entirely after this refactor, 
+// as the database now acts as the ultimate source of truth for authorization.
+// import { isAuthorizedForRoom } from "../dmAuth.js"; 
 
 export const registerRoomHandlers = (io: Server, socket: Socket) => {
+    
+    // 1. PRESENCE & LOBBY JOIN
     socket.on("join", () => {
-        const username = socket.data.user.username;
+        // Fallback for anonymous users (Phase 4 setup)
+        const username = socket.data.user?.username || socket.data.guestDisplayName || "Stranger";
         addUser(username, socket.id);
         io.emit("onlineUsers", getOnlineUsers());
     });
 
+    // 2. SECURE ROOM ENTRY (The DB Bouncer)
     socket.on("enterRoom", async (roomId: string) => {
-        // THE BACKEND SHIELD: 
-        // socket.rooms is a native Set containing all rooms this socket is currently in.
+        const userId = socket.data.user?.id;
+        const guestId = socket.data.guestId; // Prepared for Phase 4
 
-        if (!isAuthorizedForRoom(roomId, socket.data.user.id)) {
-            console.warn(`[SECURITY] ${socket.data.user.username} denied entry to ${roomId}`);
-            return; // silently refuse — don't leak whether the room "exists"
-        }
-
-        if (socket.rooms.has(roomId)) {
-            console.log(`[SOCKET] User ${socket.id} attempted duplicate join for ${roomId}`);
-            return; // Silently abort! Do not broadcast a system message.
-        }
-
-        socket.join(roomId);
-        joinRoom(roomId, socket.id);
-
-        if (roomId.startsWith("dm:")) {
-            // Mark all unread messages in this room as read (where sender is NOT current user)
-            const updated = await prisma.message.updateMany({
-                where: {
-                    roomId,
-                    isRead: false,
-                    NOT: { sender: socket.data.user.username }
-                },
-                data: {
-                    isRead: true,
-                    readAt: new Date()
-                }
-            })
-
-            if (updated.count > 0) {
-                io.to(roomId).except(socket.id).emit("messagesRead", {
-                    roomId,
-                    readAt: Date.now()
-                })
-            }
-        }
-
-        const username = socketToUser.get(socket.id);
-        if (username) {
-            try {
-                const sysMsg = await prisma.message.create({
-                    data: {
-                        roomId,
-                        message: `${username} joined the room.`,
-                        sender: "System",
-                        type: "SYSTEM"
-                    }
-                });
-
-                const formattedSysMsg: ChatMessage = {
-                    id: sysMsg.id,
-                    roomId: sysMsg.roomId,
-                    message: sysMsg.message,
-                    sender: sysMsg.sender,
-                    timestamp: sysMsg.createdAt.getTime(),
-                    status: "sent",
-                    type: "SYSTEM"
-                };
-
-                socket.to(roomId).emit("receiveMessage", formattedSysMsg);
-            } catch (error) {
-                console.error(error);
-            }
-        }
-        io.to(roomId).emit("roomUsers", getUsersInRoom(roomId));
-    });
-
-    socket.on("leaveRoom", async (roomId: string) => {
-        const username = socketToUser.get(socket.id)
-
-        // memory + network first
-        leaveRoom(roomId, socket.id)
-        socket.leave(roomId)
-
-        // system message
-        if (username) {
-            try {
-                const sysMsg = await prisma.message.create({
-                    data: {
-                        roomId,
-                        message: `${username} left the room.`,
-                        sender: "System",
-                        type: "SYSTEM"
-                    }
-                })
-
-                const formattedSysMsg: ChatMessage = {
-                    id: sysMsg.id,
-                    roomId: sysMsg.roomId,
-                    message: sysMsg.message,
-                    sender: sysMsg.sender,
-                    timestamp: sysMsg.createdAt.getTime(),
-                    status: "sent",
-                    type: "SYSTEM"
-                }
-
-                // socket.leave already ran, so socket.to correctly
-                // reaches only the remaining members, not the leaver
-                socket.to(roomId).emit("receiveMessage", formattedSysMsg)
-            } catch (error) {
-                console.error(error)
-            }
-        }
-
-        socket.to(roomId).emit("roomUsers", getUsersInRoom(roomId))
-    })
-
-    socket.on("sendMessage", async (payload: ChatMessage, callback) => {
-        
-        if (!isAuthorizedForRoom(payload.roomId, socket.data.user.id)) {
-            console.warn(`[SECURITY] ${socket.data.user.username} tried to send into ${payload.roomId} without access`);
+        // Prevent joining if they have no valid session or guest identity
+        if (!userId && !guestId) {
+            console.warn(`[SECURITY] Unidentified socket ${socket.id} attempted to join ${roomId}`);
             return;
         }
 
         try {
-            const trustedSender = socket.data.user.username
-            const savedMessage = await prisma.message.create({
-                data: {
-                    id: payload.id,
-                    roomId: payload.roomId,
-                    message: payload.message,
-                    sender: trustedSender
+            // THE NEW SHIELD: Verify relational membership in Prisma
+            const membership = await prisma.roomMember.findFirst({
+                where: {
+                    roomId: roomId,
+                    OR: [
+                        { userId: userId },
+                        { guestId: guestId }
+                    ]
                 }
             });
 
-            const trustedPayload: ChatMessage = {
-                ...payload,
-                sender: trustedSender,
-            };
-
-            // ADD THIS BLOCK ↓
-            if (payload.roomId.startsWith("dm:")) {
-                const socketsInRoom = await io.in(payload.roomId).fetchSockets()
-                const otherPersonIsPresent = socketsInRoom.some(s => s.id !== socket.id)
-
-                if (otherPersonIsPresent) {
-                    await prisma.message.update({
-                        where: { id: savedMessage.id },
-                        data: { isRead: true, readAt: new Date() }
-                    })
-                    // Tell the sender their message was instantly read
-                    socket.emit("messagesRead", {
-                        roomId: payload.roomId,
-                        readAt: Date.now()
-                    })
-                }
+            if (!membership) {
+                console.warn(`[SECURITY] User/Guest denied entry to ${roomId}. Not a member.`);
+                return; // Silently refuse
             }
-            // ADD THIS BLOCK END ↑
 
-            socket.to(payload.roomId).emit("receiveMessage", trustedPayload);
-
-            if (callback) {
-                callback({ status: "sent", id: payload.id });
+            if (socket.rooms.has(roomId)) {
+                console.log(`[SOCKET] User ${socket.id} attempted duplicate join for ${roomId}`);
+                return; 
             }
+
+            socket.join(roomId);
+            joinRoom(roomId, socket.id);
+            
+            // Note: History hydration is currently handled by your REST API, 
+            // so we don't need to fetch messages here unless you want to move it to WebSockets.
+
         } catch (error) {
-            console.error("Failed to save message", error);
+            console.error("[enterRoom] DB Error:", error);
         }
     });
 
+    // 3. SECURE MESSAGE BROADCASTING
+    socket.on("sendMessage", async (payload: { message: string; roomId: string; type?: string }) => {
+        const { roomId, message, type = "USER" } = payload;
+        
+        const userId = socket.data.user?.id;
+        const guestId = socket.data.guestId;
+        const displayName = socket.data.user?.name || socket.data.user?.username || "Stranger";
+
+        try {
+            // ENFORCE AUTHORIZATION: Ensure they weren't kicked/removed before sending
+            const membership = await prisma.roomMember.findFirst({
+                where: {
+                    roomId: roomId,
+                    OR: [{ userId: userId }, { guestId: guestId }]
+                }
+            });
+
+            if (!membership) {
+                console.warn(`[SECURITY] Unauthorized message attempt in ${roomId}`);
+                return;
+            }
+
+            // Persist message using the new schema structure
+            const savedMessage = await prisma.message.create({
+                data: {
+                    roomId,
+                    message,
+                    senderId: userId || guestId,
+                    senderDisplayName: displayName,
+                    type: type
+                }
+            });
+
+            // Map exactly to the updated Shared ChatMessage interface
+            const outgoingMessage: ChatMessage = {
+                id: savedMessage.id,
+                roomId: savedMessage.roomId,
+                message: savedMessage.message,
+                senderId: savedMessage.senderId ?? undefined,
+                senderDisplayName: savedMessage.senderDisplayName,
+                timestamp: savedMessage.createdAt.getTime(),
+                status: "sent",
+                type: (savedMessage.type as "USER" | "SYSTEM"),
+                isRead: false
+            };
+
+            // Broadcast to the room (and they will receive it because they are in the Socket.IO room)
+            io.to(roomId).emit("receiveMessage", outgoingMessage);
+
+        } catch (error) {
+            console.error("[sendMessage] Error:", error);
+        }
+    });
+
+    // 4. TYPING INDICATORS (Unchanged, just uses the map)
     socket.on("typing", (roomId: string) => {
         const username = socketToUser.get(socket.id);
         socket.to(roomId).emit("userTyping", username);
@@ -186,6 +129,7 @@ export const registerRoomHandlers = (io: Server, socket: Socket) => {
         socket.to(roomId).emit("userStoppedTyping", username);
     });
 
+    // 5. DISCONNECT & CLEANUP
     socket.on("disconnecting", async () => {
         const username = socketToUser.get(socket.id);
 
@@ -194,11 +138,13 @@ export const registerRoomHandlers = (io: Server, socket: Socket) => {
 
             if (username) {
                 try {
+                    // Create system message using the new schema
                     const sysMsg = await prisma.message.create({
                         data: {
                             roomId: room,
                             message: `${username} left the room.`,
-                            sender: "System",
+                            senderId: null, // System messages have no senderId
+                            senderDisplayName: "System",
                             type: "SYSTEM"
                         }
                     });
@@ -207,7 +153,7 @@ export const registerRoomHandlers = (io: Server, socket: Socket) => {
                         id: sysMsg.id,
                         roomId: sysMsg.roomId,
                         message: sysMsg.message,
-                        sender: sysMsg.sender,
+                        senderDisplayName: sysMsg.senderDisplayName,
                         timestamp: sysMsg.createdAt.getTime(),
                         status: "sent",
                         type: "SYSTEM"
@@ -215,7 +161,7 @@ export const registerRoomHandlers = (io: Server, socket: Socket) => {
 
                     socket.to(room).emit("receiveMessage", formattedSysMsg);
                 } catch (error) {
-                    console.error(error);
+                    console.error("[disconnecting] SysMsg Error:", error);
                 }
             }
             leaveRoom(room, socket.id);

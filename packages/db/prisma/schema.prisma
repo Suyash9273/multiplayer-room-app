@@ -6,16 +6,81 @@ datasource db {
   provider = "postgresql"
 }
 
-model Message {
+// Defines the purpose of the room to help the backend route events correctly
+// and apply specific cleanup logic (e.g., deleting ANONYMOUS rooms on disconnect)
+enum RoomType {
+  DIRECT
+  GROUP
+  ANONYMOUS
+}
+
+// CORE CHAT MODELS
+
+model Room {
+  id        String       @id @default(uuid())
+  type      RoomType     @default(DIRECT)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  // Relational links
+  members   RoomMember[]
+  messages  Message[]
+}
+
+model RoomMember {
   id        String   @id @default(uuid())
+  
+  // Link back to the specific Room
   roomId    String
-  message   String
-  sender    String // For system messages, we can just set this to system
-  type      String   @default("USER")
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  // Link to an authenticated User (Nullable for anonymous chats)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Link to a temporary Guest (Nullable for standard user chats)
+  guestId   String?
+  guest     GuestIdentity? @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  joinedAt  DateTime @default(now())
+
+  // Constraints: A specific user or guest can only join a specific room once
+  @@unique([roomId, userId])
+  @@unique([roomId, guestId])
+}
+
+// Represents a temporary user in the Omegle-style system.
+model GuestIdentity {
+  id        String   @id @default(uuid())
+  // Use socketId to easily identify and clean up disconnected strangers
+  socketId  String   @unique 
+  // Future-proofing: Array of tags for Phase 4 interest-based matchmaking
+  interests String[] 
   createdAt DateTime @default(now())
 
-  isRead    Boolean   @default(false)
-  readAt    DateTime?
+  roomMembers RoomMember[]
+}
+
+model Message {
+  id                String   @id @default(uuid())
+  
+  // Strongly bound to a relational Room, preventing unauthorized string-guessing
+  roomId            String
+  room              Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  
+  message           String
+  
+  // Who sent it? Nullable so system messages don't need a sender ID
+  senderId          String?  
+  // We store the display name at the time of sending (e.g., "Stranger", "Alice").
+  // This avoids massive frontend joins just to display the sender's name.
+  senderDisplayName String   
+  
+  type              String   @default("USER")
+  createdAt         DateTime @default(now())
+
+  isRead            Boolean   @default(false)
+  readAt            DateTime?
 }
 
 // --- BETTER AUTH CORE TABLES ---
@@ -34,6 +99,9 @@ model User {
 
   sentFriendships     Friendship[] @relation("SentFriendships")
   receivedFriendships Friendship[] @relation("ReceivedFriendships")
+
+  // NEW: Back-relation connecting the User to the rooms they belong to
+  roomMembers         RoomMember[]
 }
 
 model Session {

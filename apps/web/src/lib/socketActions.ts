@@ -36,35 +36,51 @@ export function leaveRoom(roomId: string) {
   usePresenceStore.getState().setRoomUsers([])
 }
 
-export function sendMessage(message: string) {
-  const { username, currentRoom } = useSessionStore.getState()
+// THE NEW SECURE MESSAGE SENDER
 
-  const payload: ChatMessage = {
+export interface SendMessagePayload {
+    roomId: string;
+    message: string;
+    senderDisplayName: string;
+    type?: string;
+}
+
+export function sendMessage(payload: SendMessagePayload) {
+  // 1. Construct the Optimistic UI Message using the new Shared Schema
+  const optimisticMessage: ChatMessage = {
     id: crypto.randomUUID(),
-    roomId: currentRoom,
-    message,
-    sender: username,
+    roomId: payload.roomId,
+    message: payload.message,
+    senderDisplayName: payload.senderDisplayName,
     timestamp: Date.now(),
     status: "pending",
+    type: (payload.type as "USER" | "SYSTEM") || "USER"
   }
 
-  useChatStore.getState().addMessage(payload)
+  // 2. Immediately inject into Zustand for instantaneous UI feedback
+  useChatStore.getState().addMessage(optimisticMessage)
 
+  // 3. Emit the structured payload to the Express Backend Bouncer
   socket.emit(
     "sendMessage",
     payload,
-    (receipt: { status: string; id: string }) => {
-      useChatStore.getState().updateMessageStatus(receipt.id, "sent")
+    // The backend now returns a rich receipt. We mark it as 'sent' once confirmed.
+    (receipt: { status: string; data?: ChatMessage }) => {
+      if (receipt.status === "success") {
+         useChatStore.getState().updateMessageStatus(optimisticMessage.id, "sent")
+      }
     }
   )
 }
 
-export function emitTyping() {
-  const { currentRoom } = useSessionStore.getState()
-  socket.emit("typing", currentRoom)
+// TYPING INDICATORS
+
+export function emitTyping(roomId?: string) {
+  const room = roomId || useSessionStore.getState().currentRoom
+  if (room) socket.emit("typing", room)
 }
 
-export function emitStopTyping() {
-  const { currentRoom } = useSessionStore.getState()
-  socket.emit("stopTyping", currentRoom)
+export function emitStopTyping(roomId?: string) {
+  const room = roomId || useSessionStore.getState().currentRoom
+  if (room) socket.emit("stopTyping", room)
 }
