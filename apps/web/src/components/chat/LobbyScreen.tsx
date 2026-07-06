@@ -6,6 +6,7 @@ import { usePresenceStore } from "@/store/presenceStore"
 import { useSessionStore } from "@/store/sessionStore"
 
 import RoomEntryForm from "./RoomEntryForm"
+import AnonymousRoomStarter from "./AnonymousRoomStarter"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
 import { FriendList } from "./FriendList"
 import { FriendRequests } from "./FriendRequests"
@@ -16,9 +17,20 @@ import { useFriendStore } from "@/store/friendStore"
 
 export default function LobbyScreen() {
     const username = useSessionStore((s) => s.username)
+    const identityType = useSessionStore((s) => s.identityType)
+    const isGuest = identityType === "guest"
     const onlineUsers = usePresenceStore((s) => s.onlineUsers)
 
     useEffect(() => {
+        // Friends are a real-account concept — /api/friends/* is still
+        // gated by `requireAuth` (user-only) on the backend, so a guest
+        // hitting it would just get a 401 for nothing. Skip the call
+        // entirely rather than eating a pointless round trip + console noise.
+        if (isGuest) {
+            useFriendStore.getState().setHydrated(true)
+            return
+        }
+
         const hydrateFriendData = async () => {
             try {
                 // Fire both requests at the exact same time
@@ -45,7 +57,7 @@ export default function LobbyScreen() {
         };
 
         hydrateFriendData();
-    }, []);
+    }, [isGuest]);
 
     return (
         <div className="container mx-auto max-w-6xl h-full py-10 space-y-6 px-4">
@@ -67,8 +79,17 @@ export default function LobbyScreen() {
                         <CardTitle>Join Room</CardTitle>
                     </CardHeader>
 
-                    <CardContent>
+                    <CardContent className="flex flex-col gap-4">
                         <RoomEntryForm />
+                        <div className="relative">
+                            <div className="absolute inset-0 flex items-center">
+                                <span className="w-full border-t" />
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                                <span className="bg-background px-2 text-muted-foreground">or</span>
+                            </div>
+                        </div>
+                        <AnonymousRoomStarter />
                     </CardContent>
                 </Card>
 
@@ -107,31 +128,38 @@ export default function LobbyScreen() {
 
             </div>
 
-            <Separator />
+            {/* Friends are a real-account concept — a guest identity is
+                discarded when the tab closes, so there's nothing durable
+                to attach a friendship to. Hide the whole panel for them
+                rather than showing an always-empty, always-401ing UI. */}
+            {!isGuest && (
+                <>
+                    <Separator />
 
-            {/* BOTTOM ROW: The Personal Social Panel */}
-        <div className="w-full">
-            <h2 className="text-xl font-semibold mb-4">Social</h2>
-            
-            <Tabs defaultValue="friends" className="w-full">
-                <TabsList className="grid w-[400px] grid-cols-2 mb-4">
-                    <TabsTrigger value="friends">Friends List</TabsTrigger>
-                    <TabsTrigger value="requests">Pending Requests</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="friends">
-                    <div className="md:w-1/2">
-                        <FriendList />
+                    <div className="w-full">
+                        <h2 className="text-xl font-semibold mb-4">Social</h2>
+
+                        <Tabs defaultValue="friends" className="w-full">
+                            <TabsList className="grid w-[400px] grid-cols-2 mb-4">
+                                <TabsTrigger value="friends">Friends List</TabsTrigger>
+                                <TabsTrigger value="requests">Pending Requests</TabsTrigger>
+                            </TabsList>
+
+                            <TabsContent value="friends">
+                                <div className="md:w-1/2">
+                                    <FriendList />
+                                </div>
+                            </TabsContent>
+
+                            <TabsContent value="requests">
+                                <div className="md:w-1/2">
+                                    <FriendRequests />
+                                </div>
+                            </TabsContent>
+                        </Tabs>
                     </div>
-                </TabsContent>
-                
-                <TabsContent value="requests">
-                    <div className="md:w-1/2">
-                        <FriendRequests />
-                    </div>
-                </TabsContent>
-            </Tabs>
-        </div>
+                </>
+            )}
 
         </div>
     )

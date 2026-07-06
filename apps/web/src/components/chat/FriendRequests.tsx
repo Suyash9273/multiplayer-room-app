@@ -89,7 +89,7 @@ export function FriendRequests() {
                 <div className="space-y-3">
                     <form onSubmit={handleSendRequest} className="flex gap-2">
                         <Input 
-                            placeholder="Enter User ID..." 
+                            placeholder="Enter Username..." 
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
                         />

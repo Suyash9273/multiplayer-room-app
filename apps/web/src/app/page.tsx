@@ -7,29 +7,38 @@ import LoginScreen from "@/components/chat/LoginScreen"
 
 export default function Home() {
     const isJoined = useSessionStore((s) => s.isJoined);
+    const identityType = useSessionStore((s) => s.identityType);
+    const joinError = useSessionStore((s) => s.joinError);
     const { data: session, isPending } = useSession();
     const router = useRouter();
+
+    const hasSomeIdentity = Boolean(session?.user) || identityType === "guest";
 
     useEffect(() => {
         if (isPending) return;
 
-        if (session?.user && isJoined) {
+        if (hasSomeIdentity && isJoined) {
             router.push("/lobby");
         }
-    }, [isPending, session, isJoined, router]);
+    }, [isPending, hasSomeIdentity, isJoined, router]);
 
     if (isPending) return null;
 
-    if (!session?.user) {
-        return <LoginScreen />;
-    }
-
     if (!isJoined) {
-        return (
-            <div className="flex h-screen items-center justify-center">
-                <span className="animate-pulse">Reconnecting...</span>
-            </div>
-        );
+        if (joinError) {
+            return (
+                <div className="flex h-screen flex-col items-center justify-center gap-3">
+                    <p className="text-sm text-red-500 font-medium">Couldn't connect: {joinError}</p>
+                    <button
+                        className="text-sm underline text-muted-foreground"
+                        onClick={() => window.location.reload()}
+                    >
+                        Try again
+                    </button>
+                </div>
+            );
+        }
+        return <LoginScreen />;
     }
 
     return null;

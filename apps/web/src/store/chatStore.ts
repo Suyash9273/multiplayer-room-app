@@ -14,7 +14,23 @@ type ChatState = {
 export const useChatStore = create<ChatState>((set) => ({
     messages: [],
     addMessage: (message) =>
-        set((state) => ({ messages: [...state.messages, message] })),
+        set((state) => {
+            // A message can arrive twice through two different paths for the
+            // SENDER: once as the optimistic entry (added immediately on
+            // send), and again via the server's `receiveMessage` broadcast
+            // (which includes the sender's own socket, since they're in the
+            // room too). As long as both carry the SAME id — see
+            // socketActions.ts, which generates the id client-side and
+            // sends it to the server to reuse — this merges them into one
+            // entry instead of showing the message twice.
+            const existingIndex = state.messages.findIndex((m) => m.id === message.id)
+            if (existingIndex !== -1) {
+                const updated = [...state.messages]
+                updated[existingIndex] = { ...updated[existingIndex], ...message }
+                return { messages: updated }
+            }
+            return { messages: [...state.messages, message] }
+        }),
     updateMessageStatus: (id, status) =>
         set((state) => ({
             messages: state.messages.map((m) => (

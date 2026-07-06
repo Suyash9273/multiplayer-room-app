@@ -7,35 +7,28 @@ import RoomScreen from "@/components/chat/RoomScreen"
 
 export default function RoomPage({params}: {params: Promise<{roomId: string}>}) {
     const isJoined = useSessionStore((state) => state.isJoined)
+    const identityType = useSessionStore((state) => state.identityType)
     const { data: session, isPending } = useSession()
     const router = useRouter()
     const {roomId} = use(params)
 
     const decodedRoomId = decodeURIComponent(roomId)
 
+    const hasSomeIdentity = Boolean(session?.user) || identityType === "guest";
+
     useEffect(() => {
         if (isPending) return;
 
-        if (!session?.user) {
+        if (!hasSomeIdentity || !isJoined) {
             router.push("/")
             return
         }
 
-        if (isJoined) {
-            useSessionStore.getState().setCurrentRoom(decodedRoomId)
-        }
-    }, [isPending, session, isJoined, router, decodedRoomId]);
+        useSessionStore.getState().setCurrentRoom(decodedRoomId)
+    }, [isPending, hasSomeIdentity, isJoined, router, decodedRoomId]);
 
     if (isPending) return null;
-    if (!session?.user) return null;
-
-    if (!isJoined) {
-        return (
-            <div className="flex h-screen items-center justify-center">
-                <span className="animate-pulse">Reconnecting...</span>
-            </div>
-        );
-    }
+    if (!hasSomeIdentity || !isJoined) return null;
 
     return <RoomScreen roomId={decodedRoomId} />;
 }

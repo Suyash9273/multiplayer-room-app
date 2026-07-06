@@ -50,16 +50,41 @@ model RoomMember {
 }
 
 // Represents a temporary user in the Omegle-style system.
+//
+// IMPORTANT: identity here is NOT tied to a socket connection.
+// socket.id changes every time a browser reconnects (refresh, flaky wifi),
+// so keying identity off it would orphan the guest's RoomMember rows on
+// every reconnect. Instead, `token` is a durable, server-issued secret
+// that lives in an httpOnly cookie on the client and is looked up the
+// exact same way we already look up Session.token for real users.
 model GuestIdentity {
-  id        String   @id @default(uuid())
-  // Use socketId to easily identify and clean up disconnected strangers
-  socketId  String   @unique 
+  id          String    @id @default(uuid())
+
+  // Opaque, unguessable secret. Never sent anywhere except set as an
+  // httpOnly cookie. This — not socketId — is what proves "this browser
+  // owns this guest identity" across reconnects.
+  token       String    @unique
+
+  // Human-friendly label generated server-side at mint time (e.g. "Stranger-4821").
+  // Never trust a client-supplied display name for guests.
+  displayName String
+
+  // Last-seen socket, kept only for observability/debugging (which live
+  // connection currently represents this guest). NOT unique, NOT the
+  // identity key, and it's fine for it to be null while disconnected.
+  socketId    String?
+
   // Future-proofing: Array of tags for Phase 4 interest-based matchmaking
-  interests String[] 
-  createdAt DateTime @default(now())
+  interests   String[]
+
+  createdAt   DateTime  @default(now())
+  // Guests are inherently temporary — this lets a cleanup job reap old
+  // anonymous identities (and cascade their RoomMember rows) safely.
+  expiresAt   DateTime
 
   roomMembers RoomMember[]
 }
+
 
 model Message {
   id                String   @id @default(uuid())

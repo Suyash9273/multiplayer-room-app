@@ -1,170 +1,261 @@
-import { Server, Socket } from "socket.io";
 import { prisma } from "@multiplayer/db";
 import type { ChatMessage } from "@multiplayer/shared";
+import type { AppSocket, AppServer } from "../types.js";
 import {
     addUser, getOnlineUsers, joinRoom, leaveRoom,
-    getUsersInRoom, socketToUser
+    getUsersInRoom, socketToIdentity
 } from "../presence.js";
 
-// You can likely deprecate dmAuth.js entirely after this refactor, 
-// as the database now acts as the ultimate source of truth for authorization.
-// import { isAuthorizedForRoom } from "../dmAuth.js"; 
+// dmAuth.js is fully deprecated now — the database (RoomMember rows) is the
+// single source of truth for "who is allowed in this room", checked fresh
+// on every enterRoom/sendMessage. No string-based room ID parsing needed.
 
-export const registerRoomHandlers = (io: Server, socket: Socket) => {
-    
+// Shared by the join-message, leave-message (explicit leaveRoom), and
+// leave-message (disconnect) call sites so all three system messages are
+// persisted the exact same way. Returns the formatted message; the CALLER
+// decides how to broadcast it (io.to vs socket.to — see disconnecting
+// below, where the socket hasn't technically left the room yet and so
+// needs to be excluded explicitly).
+async function createSystemMessage(roomId: string, text: string): Promise<ChatMessage | null> {
+    try {
+        const sysMsg = await prisma.message.create({
+            data: {
+                roomId,
+                message: text,
+                senderId: null,
+                senderDisplayName: "System",
+                type: "SYSTEM",
+            },
+        });
+
+        return {
+            id: sysMsg.id,
+            roomId: sysMsg.roomId,
+            message: sysMsg.message,
+            senderDisplayName: sysMsg.senderDisplayName,
+            timestamp: sysMsg.createdAt.getTime(),
+            status: "sent",
+            type: "SYSTEM",
+        };
+    } catch (error) {
+        console.error("[createSystemMessage] Error:", error);
+        return null;
+    }
+}
+
+export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
+    const identity = socket.data.identity;
+
     // 1. PRESENCE & LOBBY JOIN
-    socket.on("join", () => {
-        // Fallback for anonymous users (Phase 4 setup)
-        const username = socket.data.user?.username || socket.data.guestDisplayName || "Stranger";
-        addUser(username, socket.id);
+    // No payload needed — the client can't tell us who it is, the verified
+    // identity already lives on the socket from the auth middleware. We
+    // ack back the resolved identity so the frontend can render the
+    // correct display name without ever having asserted it itself.
+    socket.on("join", (ack?: (identity: { id: string; displayName: string; type: string }) => void) => {
+        addUser(identity, socket.id);
         io.emit("onlineUsers", getOnlineUsers());
+        ack?.({ id: identity.id, displayName: identity.displayName, type: identity.type });
     });
 
     // 2. SECURE ROOM ENTRY (The DB Bouncer)
     socket.on("enterRoom", async (roomId: string) => {
-        const userId = socket.data.user?.id;
-        const guestId = socket.data.guestId; // Prepared for Phase 4
-
-        // Prevent joining if they have no valid session or guest identity
-        if (!userId && !guestId) {
-            console.warn(`[SECURITY] Unidentified socket ${socket.id} attempted to join ${roomId}`);
-            return;
-        }
-
         try {
-            // THE NEW SHIELD: Verify relational membership in Prisma
+            // THE SHIELD: Verify relational membership in Prisma. Works
+            // identically for a User row or a GuestIdentity row — that's
+            // the whole point of the RoomMember.userId/guestId split.
             const membership = await prisma.roomMember.findFirst({
                 where: {
-                    roomId: roomId,
-                    OR: [
-                        { userId: userId },
-                        { guestId: guestId }
-                    ]
-                }
+                    roomId,
+                    ...(identity.type === "user"
+                        ? { userId: identity.id }
+                        : { guestId: identity.id }),
+                },
             });
 
             if (!membership) {
-                console.warn(`[SECURITY] User/Guest denied entry to ${roomId}. Not a member.`);
+                console.warn(`[SECURITY] ${identity.type}:${identity.id} denied entry to ${roomId}. Not a member.`);
                 return; // Silently refuse
             }
 
             if (socket.rooms.has(roomId)) {
-                console.log(`[SOCKET] User ${socket.id} attempted duplicate join for ${roomId}`);
-                return; 
+                console.log(`[SOCKET] ${socket.id} attempted duplicate join for ${roomId}`);
+                return;
             }
 
             socket.join(roomId);
             joinRoom(roomId, socket.id);
-            
-            // Note: History hydration is currently handled by your REST API, 
-            // so we don't need to fetch messages here unless you want to move it to WebSockets.
 
+            // Let everyone already in the room (including this socket) know
+            // the current roster. The frontend listens for this via `roomUsers`.
+            io.to(roomId).emit("roomUsers", getUsersInRoom(roomId));
+
+            // NEW: symmetric with the "left the room" message on disconnect —
+            // previously only "left" existed, so a room only ever announced
+            // half of the lifecycle. Fire-and-forget; entry already succeeded
+            // regardless of whether this persists.
+            createSystemMessage(roomId, `${identity.displayName} joined the room.`)
+                .then((msg) => { if (msg) io.to(roomId).emit("receiveMessage", msg); });
+
+            // Note: history hydration is handled by the REST API
+            // (GET /api/rooms/:roomId/messages), so no fetch needed here.
         } catch (error) {
             console.error("[enterRoom] DB Error:", error);
         }
     });
 
-    // 3. SECURE MESSAGE BROADCASTING
-    socket.on("sendMessage", async (payload: { message: string; roomId: string; type?: string }) => {
-        const { roomId, message, type = "USER" } = payload;
-        
-        const userId = socket.data.user?.id;
-        const guestId = socket.data.guestId;
-        const displayName = socket.data.user?.name || socket.data.user?.username || "Stranger";
+    // 2b. LEAVE ROOM
+    // Previously missing entirely — the frontend already emitted this event
+    // on every navigation away from a room, but nothing on the server was
+    // listening, so the socket stayed in the Socket.IO room and in
+    // `roomToSockets` forever (until full disconnect).
+    socket.on("leaveRoom", (roomId: string) => {
+        if (!socket.rooms.has(roomId)) return;
 
+        socket.leave(roomId);
+        leaveRoom(roomId, socket.id);
+        io.to(roomId).emit("roomUsers", getUsersInRoom(roomId));
+        createSystemMessage(roomId, `${identity.displayName} left the room.`)
+            .then((msg) => { if (msg) io.to(roomId).emit("receiveMessage", msg); });
+    });
+
+    // 3. SECURE MESSAGE BROADCASTING
+    socket.on(
+        "sendMessage",
+        async (
+            payload: { message: string; roomId: string; type?: string; id?: string },
+            ack?: (receipt: { status: "success" | "error"; data?: ChatMessage; error?: string }) => void
+        ) => {
+            const { roomId, message, type = "USER", id } = payload;
+
+            try {
+                // ENFORCE AUTHORIZATION: Ensure they weren't kicked/removed before sending
+                const membership = await prisma.roomMember.findFirst({
+                    where: {
+                        roomId,
+                        ...(identity.type === "user"
+                            ? { userId: identity.id }
+                            : { guestId: identity.id }),
+                    },
+                });
+
+                if (!membership) {
+                    console.warn(`[SECURITY] Unauthorized message attempt in ${roomId} by ${identity.type}:${identity.id}`);
+                    ack?.({ status: "error", error: "Not a member of this room" });
+                    return;
+                }
+
+                // Persist message. senderDisplayName is ALWAYS taken from the
+                // server-verified identity, never from the client payload —
+                // preserves the Zero-Trust Payload guarantee.
+                //
+                // `id` (if provided) is the client's own optimistically-
+                // generated id, reused here instead of letting Prisma mint a
+                // new one. That's what lets the broadcast below reconcile
+                // with the sender's optimistic message on the frontend
+                // (matched by id) instead of showing up as a duplicate.
+                const savedMessage = await prisma.message.create({
+                    data: {
+                        ...(id ? { id } : {}),
+                        roomId,
+                        message,
+                        senderId: identity.id,
+                        senderDisplayName: identity.displayName,
+                        type,
+                    },
+                });
+
+                const outgoingMessage: ChatMessage = {
+                    id: savedMessage.id,
+                    roomId: savedMessage.roomId,
+                    message: savedMessage.message,
+                    senderId: savedMessage.senderId ?? undefined,
+                    senderDisplayName: savedMessage.senderDisplayName,
+                    timestamp: savedMessage.createdAt.getTime(),
+                    status: "sent",
+                    type: savedMessage.type as "USER" | "SYSTEM",
+                    isRead: false,
+                };
+
+                // Broadcast to the whole room (sender included — they're in it too)
+                io.to(roomId).emit("receiveMessage", outgoingMessage);
+
+                // THE FIX: this ack was never being called before, so the
+                // frontend's optimistic message was permanently stuck on
+                // "pending". This is what flips it to "sent".
+                ack?.({ status: "success", data: outgoingMessage });
+            } catch (error) {
+                console.error("[sendMessage] Error:", error);
+                ack?.({ status: "error", error: "Internal Server Error" });
+            }
+        }
+    );
+
+    // 3b. READ RECEIPTS
+    // Client calls this whenever it's actively looking at a room (on entry,
+    // and again whenever new messages arrive while still open). We mark
+    // every message NOT sent by the reader as read, and tell the room —
+    // that's what flips the ORIGINAL SENDER's own tick from single to
+    // double, on their screen.
+    socket.on("markRead", async (roomId: string) => {
         try {
-            // ENFORCE AUTHORIZATION: Ensure they weren't kicked/removed before sending
             const membership = await prisma.roomMember.findFirst({
                 where: {
-                    roomId: roomId,
-                    OR: [{ userId: userId }, { guestId: guestId }]
-                }
-            });
-
-            if (!membership) {
-                console.warn(`[SECURITY] Unauthorized message attempt in ${roomId}`);
-                return;
-            }
-
-            // Persist message using the new schema structure
-            const savedMessage = await prisma.message.create({
-                data: {
                     roomId,
-                    message,
-                    senderId: userId || guestId,
-                    senderDisplayName: displayName,
-                    type: type
-                }
+                    ...(identity.type === "user"
+                        ? { userId: identity.id }
+                        : { guestId: identity.id }),
+                },
+            });
+            if (!membership) return;
+
+            const readAt = new Date();
+            const { count } = await prisma.message.updateMany({
+                where: {
+                    roomId,
+                    type: "USER",
+                    isRead: false,
+                    senderId: { not: identity.id }, // never mark your own messages "read"
+                },
+                data: { isRead: true, readAt },
             });
 
-            // Map exactly to the updated Shared ChatMessage interface
-            const outgoingMessage: ChatMessage = {
-                id: savedMessage.id,
-                roomId: savedMessage.roomId,
-                message: savedMessage.message,
-                senderId: savedMessage.senderId ?? undefined,
-                senderDisplayName: savedMessage.senderDisplayName,
-                timestamp: savedMessage.createdAt.getTime(),
-                status: "sent",
-                type: (savedMessage.type as "USER" | "SYSTEM"),
-                isRead: false
-            };
-
-            // Broadcast to the room (and they will receive it because they are in the Socket.IO room)
-            io.to(roomId).emit("receiveMessage", outgoingMessage);
-
+            if (count > 0) {
+                io.to(roomId).emit("messagesRead", { roomId, readAt: readAt.getTime() });
+            }
         } catch (error) {
-            console.error("[sendMessage] Error:", error);
+            console.error("[markRead] Error:", error);
         }
     });
 
-    // 4. TYPING INDICATORS (Unchanged, just uses the map)
+    // 4. TYPING INDICATORS
     socket.on("typing", (roomId: string) => {
-        const username = socketToUser.get(socket.id);
-        socket.to(roomId).emit("userTyping", username);
+        const entry = socketToIdentity.get(socket.id);
+        if (entry) socket.to(roomId).emit("userTyping", entry.displayName);
     });
 
     socket.on("stopTyping", (roomId: string) => {
-        const username = socketToUser.get(socket.id);
-        socket.to(roomId).emit("userStoppedTyping", username);
+        const entry = socketToIdentity.get(socket.id);
+        if (entry) socket.to(roomId).emit("userStoppedTyping", entry.displayName);
     });
 
     // 5. DISCONNECT & CLEANUP
     socket.on("disconnecting", async () => {
-        const username = socketToUser.get(socket.id);
+        const entry = socketToIdentity.get(socket.id);
 
         for (const room of socket.rooms) {
             if (room === socket.id) continue;
 
-            if (username) {
-                try {
-                    // Create system message using the new schema
-                    const sysMsg = await prisma.message.create({
-                        data: {
-                            roomId: room,
-                            message: `${username} left the room.`,
-                            senderId: null, // System messages have no senderId
-                            senderDisplayName: "System",
-                            type: "SYSTEM"
-                        }
-                    });
-
-                    const formattedSysMsg: ChatMessage = {
-                        id: sysMsg.id,
-                        roomId: sysMsg.roomId,
-                        message: sysMsg.message,
-                        senderDisplayName: sysMsg.senderDisplayName,
-                        timestamp: sysMsg.createdAt.getTime(),
-                        status: "sent",
-                        type: "SYSTEM"
-                    };
-
-                    socket.to(room).emit("receiveMessage", formattedSysMsg);
-                } catch (error) {
-                    console.error("[disconnecting] SysMsg Error:", error);
-                }
+            if (entry) {
+                const msg = await createSystemMessage(room, `${entry.displayName} left the room.`);
+                // socket.to (NOT io.to) — at "disconnecting" time the socket
+                // is still technically in `room`, so io.to would deliver this
+                // to the very client that's about to disconnect anyway.
+                if (msg) socket.to(room).emit("receiveMessage", msg);
             }
+
             leaveRoom(room, socket.id);
+            // Recompute for whoever's left, after this socket's leave is applied
+            socket.to(room).emit("roomUsers", getUsersInRoom(room));
         }
     });
-}
+};

@@ -1,13 +1,14 @@
-import { Server } from "socket.io";
+import { Server, DefaultEventsMap } from "socket.io";
 import type { Server as HttpServer } from "http";
-import cookie from "cookie";
 import { prisma } from "@multiplayer/db";
+import { resolveIdentity } from "../lib/identity.js";
 import { removeUser, getOnlineUsers } from "./presence.js";
 import { registerRoomHandlers } from "./handlers/room.handlers.js";
+import type { AppSocketData } from "./types.js";
 // import { registerFriendHandlers } from "./handlers/friend.handlers.js";
 
 export const initializeSocket = (httpServer: HttpServer) => {
-    const io = new Server(httpServer, {
+    const io = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, AppSocketData>(httpServer, {
         cors: {
             origin: "http://localhost:3000",
             methods: ["GET", "POST"],
@@ -16,26 +17,23 @@ export const initializeSocket = (httpServer: HttpServer) => {
     });
 
     // Socket Auth Middleware
+    //
+    // This used to hard-reject any socket without a Better Auth session —
+    // which meant anonymous chat could never work at the transport layer,
+    // no matter what the handlers below did. It now resolves EITHER a real
+    // session OR a guest token through the same `resolveIdentity` helper
+    // the REST layer uses, so both paths are verified server-side and
+    // neither can be spoofed by the client.
     io.use(async (socket, next) => {
         try {
             const rawCookies = socket.request.headers.cookie;
-            if (!rawCookies) return next(new Error("Authentication error: No cookies provided."));
-            
-            const parsedCookies = cookie.parse(rawCookies);
-            const rawSessionToken = parsedCookies["better-auth.session_token"];
-            if (!rawSessionToken) return next(new Error("Authentication error: Session token missing."));
+            const identity = await resolveIdentity(rawCookies);
 
-            const sessionToken = rawSessionToken.split(".")[0];
-            const session = await prisma.session.findUnique({
-                where: { token: sessionToken },
-                include: { user: true }
-            });
-
-            if (!session || session.expiresAt < new Date()) {
-                return next(new Error("Authentication Error: Session invalid or expired"));
+            if (!identity) {
+                return next(new Error("Authentication error: No valid session or guest token."));
             }
 
-            socket.data.user = session.user;
+            socket.data.identity = identity;
             next();
         } catch (error) {
             console.error("Socket Middleware Error:", error);
@@ -45,18 +43,24 @@ export const initializeSocket = (httpServer: HttpServer) => {
 
     // Socket Connection & Handler Registration
     io.on("connection", (socket) => {
-        const verifiedUser = socket.data.user;
-        const username = verifiedUser?.username;
+        const identity = socket.data.identity;
 
-        if (!username) {
-            socket.disconnect();
-            return;
+        // Only authenticated users get a personal notification room —
+        // friend requests, DM notifications, etc. are meaningless for a
+        // guest identity that's discarded after the tab closes.
+        if (identity.type === "user") {
+            socket.join(`user:${identity.id}`);
         }
 
-        //force the socket into a room named after their unique database ID
-        socket.join(`user:${verifiedUser.id}`)
+        // Keep GuestIdentity.socketId roughly current for observability.
+        // This is best-effort only — it is NOT the identity key (see schema).
+        if (identity.type === "guest") {
+            prisma.guestIdentity
+                .update({ where: { id: identity.id }, data: { socketId: socket.id } })
+                .catch((err) => console.error("[socket] Failed to update guest socketId:", err));
+        }
 
-        console.log(`🟢 Verified connection: ${username} (${socket.id})`);
+        console.log(`🟢 Verified connection: ${identity.displayName} [${identity.type}] (${socket.id})`);
 
         // --- REGISTER MODULAR HANDLERS ---
         registerRoomHandlers(io, socket);

@@ -18,7 +18,8 @@ import {
   sendMessage,
   emitTyping,
   emitStopTyping,
-  enterRoom
+  enterRoom,
+  markRead
 } from "@/lib/socketActions"
 import { BACKEND_URL } from "@/lib/socket"
 
@@ -157,6 +158,16 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
   }, [nextCursor, isFetchingHistory, hasMore, roomId]);
 
 
+  // --- READ RECEIPTS ---
+  // Tell the server "I've seen this room" whenever we enter it, AND again
+  // whenever the message list changes while we're still looking at it (a
+  // new incoming message counts as "seen" too, since the room is open).
+  // The server no-ops harmlessly if there's nothing new to mark.
+  useEffect(() => {
+    if (!roomId) return;
+    markRead(roomId);
+  }, [roomId, messages.length]);
+
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault()
     if (!messageInput.trim()) return
@@ -166,7 +177,6 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
     sendMessage({
       roomId,
       message: messageInput.trim(),
-      senderDisplayName: username || "Unknown",
       type: "USER"
     });
 

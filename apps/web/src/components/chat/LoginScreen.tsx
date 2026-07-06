@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { join } from "@/lib/socketActions"
+import { mintGuestIdentity } from "@/lib/guest"
 
 type ExtendedUser = {
   id: string;
@@ -24,9 +25,30 @@ export default function LoginScreen() {
   const [usernameInput, setUsernameInput] = useState("")
   const [isUpdating, setIsUpdating] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
+  const [isMintingGuest, setIsMintingGuest] = useState(false)
+  const [guestError, setGuestError] = useState("")
 
   const handleGoogleLogin = async () => {
     await signIn.social({ provider: "google", callbackURL: "/" })
+  }
+
+  // The anonymous-chat entry point. Mints (or recovers, if the browser
+  // already holds a valid guest cookie) a guest identity via the backend,
+  // then joins the socket layer exactly like an authenticated user does —
+  // `join()` doesn't care which kind of identity resolved server-side, it
+  // just trusts whatever the ack tells it.
+  const handleContinueAsGuest = async () => {
+    setIsMintingGuest(true)
+    setGuestError("")
+    try {
+      await mintGuestIdentity()
+      join()
+    } catch (err) {
+      console.error(err)
+      setGuestError("Couldn't start an anonymous session. Try again.")
+    } finally {
+      setIsMintingGuest(false)
+    }
   }
 
   const handleClaimUsername = async (e: React.FormEvent) => {
@@ -52,12 +74,11 @@ export default function LoginScreen() {
   }
 
   const handleEnterLobby = () => {
-    // We pass their CUSTOM username and the db userId to the WebSockets!
+    // join() no longer takes params — the server resolves and confirms
+    // the identity from the session cookie itself and hands it back
+    // through the ack, so the client never has to assert its own name.
     if (user?.username) {
-      join({
-        username: user.username,
-        userId: user.id
-      }) 
+      join()
     }
   }
 
@@ -73,10 +94,27 @@ export default function LoginScreen() {
             <CardTitle className="text-2xl">ChitChat</CardTitle>
             <CardDescription>Secure multiplayer communication</CardDescription>
           </CardHeader>
-          <CardContent className="flex justify-center">
+          <CardContent className="flex flex-col gap-3">
             <Button className="w-full" onClick={handleGoogleLogin}>
               Sign in with Google
             </Button>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">or</span>
+              </div>
+            </div>
+            <Button
+              className="w-full"
+              variant="secondary"
+              onClick={handleContinueAsGuest}
+              disabled={isMintingGuest}
+            >
+              {isMintingGuest ? "Starting..." : "Chat Anonymously"}
+            </Button>
+            {guestError && <p className="text-xs text-red-500 font-medium text-center">{guestError}</p>}
           </CardContent>
         </Card>
       </div>
