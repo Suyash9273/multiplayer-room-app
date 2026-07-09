@@ -3,31 +3,24 @@ import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useSessionStore } from "@/store/sessionStore"
 import { useSession } from "@/lib/auth-client"
-import LobbyScreen from "@/components/chat/LobbyScreen"
+import ProfileScreen from "@/components/chat/ProfileScreen"
 
-export default function LobbyPage() {
+export default function ProfilePage() {
     const isJoined = useSessionStore((s) => s.isJoined)
     const identityType = useSessionStore((s) => s.identityType)
     const { data: session, isPending } = useSession()
     const router = useRouter()
 
-    // Same reasoning as page.tsx and room/[roomId]/page.tsx — a guest has
-    // no Better Auth session, so `identityType === "guest"` (confirmed by
-    // the server's "join" ack) has to count as a valid identity here too.
+    // Same gate as lobby/page.tsx — a guest counts as a valid identity too.
     const hasSomeIdentity = Boolean(session?.user) || identityType === "guest"
 
     useEffect(() => {
         if (isPending) return
-        // Covers both "never had any identity" AND "has a session but never
-        // completed the join handshake" (e.g. someone bookmarked /lobby).
-        // Home is where LoginScreen owns every pre-join state — sign in,
-        // pick a username, Enter Lobby — so route back there rather than
-        // re-implementing a second (previously broken) copy of that gate here.
         if (!hasSomeIdentity || !isJoined) router.push("/")
     }, [isPending, hasSomeIdentity, isJoined, router])
 
     if (isPending) return <div className="flex h-screen items-center justify-center"><span className="animate-pulse">Loading session...</span></div>
     if (!hasSomeIdentity || !isJoined) return null
 
-    return <LobbyScreen />
+    return <ProfileScreen />
 }

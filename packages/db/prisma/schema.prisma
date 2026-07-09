@@ -122,6 +122,8 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
+  interests     String[]  @default([])
+
   sentFriendships     Friendship[] @relation("SentFriendships")
   receivedFriendships Friendship[] @relation("ReceivedFriendships")
 

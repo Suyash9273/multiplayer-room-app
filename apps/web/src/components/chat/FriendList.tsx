@@ -2,19 +2,20 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-// REMOVED: import { getDMRoomId } from "@multiplayer/shared" -> We no longer guess strings!
 import { useSessionStore } from "@/store/sessionStore"
 import { Button } from "@/components/ui/button"
 import { MessageSquare, Loader2 } from "lucide-react"
+import { BACKEND_URL } from "@/lib/socket"
 
 import { useFriendStore } from "@/store/friendStore"
 import { usePresenceStore } from "@/store/presenceStore"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { BACKEND_URL } from "@/lib/socket"
 
+// Used to live wrapped in its own <Card> as a full tab panel. Now lives
+// inside a Popover (triggered from the friends icon in LobbyHeader), so
+// it's just the content — no outer Card/CardHeader chrome of its own.
 export function FriendList() {
     // 1. Get the static array of accepted friends
     const friends = useFriendStore((state) => state.friends)
@@ -69,82 +70,80 @@ export function FriendList() {
     };
 
     return (
-        <Card className="h-full">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                <CardTitle className="text-lg">My Friends</CardTitle>
+        <div className="space-y-3">
+            <div className="flex items-center justify-between">
+                <h3 className="font-medium text-sm">My Friends</h3>
                 <Badge variant="default" className="bg-green-500 hover:bg-green-600">
                     {onlineFriendsCount} Online
                 </Badge>
-            </CardHeader>
-            <CardContent>
-                <ScrollArea className="h-[300px] pr-4">
-                    <div className="space-y-2">
-                        {
-                            !isHydrated ? (
-                                <p className="text-sm text-muted-foreground text-center py-8 animate-pulse">
-                                    Loading friends...
-                                </p>
-                            ) : friends.length === 0 ? (
-                                <p className="text-sm text-muted-foreground text-center py-8">
-                                    You haven't added any friends yet.
-                                </p>
-                            ) : (
-                                friends.map((friend) => {
-                                    const isOnline = friend.user.username ? onlineUsers.includes(friend.user.username) : false;
+            </div>
+            <ScrollArea className="h-72 pr-4">
+                <div className="space-y-2">
+                    {
+                        !isHydrated ? (
+                            <p className="text-sm text-muted-foreground text-center py-8 animate-pulse">
+                                Loading friends...
+                            </p>
+                        ) : friends.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-8">
+                                You haven't added any friends yet.
+                            </p>
+                        ) : (
+                            friends.map((friend) => {
+                                const isOnline = friend.user.username ? onlineUsers.includes(friend.user.username) : false;
 
-                                    // Fallback just in case username is null in DB
-                                    const displayUsername = friend.user.username || friend.user.name || "Friend";
+                                // Fallback just in case username is null in DB
+                                const displayUsername = friend.user.username || friend.user.name || "Friend";
 
-                                    return (
-                                        <div
-                                            key={friend.friendshipId}
-                                            className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent transition-colors"
-                                        >
-                                            <div>
-                                                <p className="font-medium text-sm">
-                                                    {friend.user.username}
-                                                </p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {friend.user.name}
-                                                </p>
-                                            </div>
-
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-muted-foreground">
-                                                        {isOnline ? "Online" : "Offline"}
-                                                    </span>
-                                                    <div
-                                                        className={`h-2.5 w-2.5 rounded-full ${isOnline
-                                                            ? "bg-green-500"
-                                                            : "bg-zinc-300 dark:bg-zinc-700"
-                                                            }`}
-                                                    />
-                                                </div>
-
-                                                {/* THE UPDATED MESSAGE BUTTON */}
-                                                <Button
-                                                    size="sm"
-                                                    variant="secondary"
-                                                    disabled={isNavigating}
-                                                    onClick={() => handleMessageFriend(friend.user.id, displayUsername)}
-                                                >
-                                                    {isNavigating ? (
-                                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                    ) : (
-                                                        <MessageSquare className="h-4 w-4 mr-2" />
-                                                    )}
-                                                    {isNavigating ? "Routing..." : "Message"}
-                                                </Button>
-                                            </div>
+                                return (
+                                    <div
+                                        key={friend.friendshipId}
+                                        className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent transition-colors"
+                                    >
+                                        <div>
+                                            <p className="font-medium text-sm">
+                                                {friend.user.username}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {friend.user.name}
+                                            </p>
                                         </div>
-                                    );
-                                })
-                            )
-                        }
-                    </div>
-                </ScrollArea>
-            </CardContent>
-        </Card>
+
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs text-muted-foreground">
+                                                    {isOnline ? "Online" : "Offline"}
+                                                </span>
+                                                <div
+                                                    className={`h-2.5 w-2.5 rounded-full ${isOnline
+                                                        ? "bg-green-500"
+                                                        : "bg-zinc-300 dark:bg-zinc-700"
+                                                        }`}
+                                                />
+                                            </div>
+
+                                            {/* THE UPDATED MESSAGE BUTTON */}
+                                            <Button
+                                                size="sm"
+                                                variant="secondary"
+                                                disabled={isNavigating}
+                                                onClick={() => handleMessageFriend(friend.user.id, displayUsername)}
+                                            >
+                                                {isNavigating ? (
+                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                ) : (
+                                                    <MessageSquare className="h-4 w-4 mr-2" />
+                                                )}
+                                                {isNavigating ? "Routing..." : "Message"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )
+                    }
+                </div>
+            </ScrollArea>
+        </div>
     )
 }
