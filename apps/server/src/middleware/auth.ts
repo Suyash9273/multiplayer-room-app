@@ -55,7 +55,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
  * route an anonymous stranger should legitimately be able to hit — right
  * now that's room membership checks and message history. Routes that only
  * make sense for a real account (friends, DMs, profile) should keep using
- * `requireAuth` above, unchanged.
+ * `requireAuth`.
  */
 export const requireIdentity = async (req: Request, res: Response, next: NextFunction) => {
     try {

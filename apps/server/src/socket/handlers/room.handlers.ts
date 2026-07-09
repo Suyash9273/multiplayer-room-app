@@ -3,19 +3,10 @@ import type { ChatMessage } from "@multiplayer/shared";
 import type { AppSocket, AppServer } from "../types.js";
 import {
     addUser, getOnlineUsers, joinRoom, leaveRoom,
-    getUsersInRoom, socketToIdentity
+    getUsersInRoom, socketToIdentity, roomToSockets
 } from "../presence.js";
 
-// dmAuth.js is fully deprecated now — the database (RoomMember rows) is the
-// single source of truth for "who is allowed in this room", checked fresh
-// on every enterRoom/sendMessage. No string-based room ID parsing needed.
 
-// Shared by the join-message, leave-message (explicit leaveRoom), and
-// leave-message (disconnect) call sites so all three system messages are
-// persisted the exact same way. Returns the formatted message; the CALLER
-// decides how to broadcast it (io.to vs socket.to — see disconnecting
-// below, where the socket hasn't technically left the room yet and so
-// needs to be excluded explicitly).
 async function createSystemMessage(roomId: string, text: string): Promise<ChatMessage | null> {
     try {
         const sysMsg = await prisma.message.create({
@@ -47,10 +38,6 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
     const identity = socket.data.identity;
 
     // 1. PRESENCE & LOBBY JOIN
-    // No payload needed — the client can't tell us who it is, the verified
-    // identity already lives on the socket from the auth middleware. We
-    // ack back the resolved identity so the frontend can render the
-    // correct display name without ever having asserted it itself.
     socket.on("join", (ack?: (identity: { id: string; displayName: string; type: string }) => void) => {
         addUser(identity, socket.id);
         io.emit("onlineUsers", getOnlineUsers());
@@ -74,7 +61,7 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
 
             if (!membership) {
                 console.warn(`[SECURITY] ${identity.type}:${identity.id} denied entry to ${roomId}. Not a member.`);
-                return; // Silently refuse
+                return; 
             }
 
             if (socket.rooms.has(roomId)) {
@@ -89,10 +76,6 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
             // the current roster. The frontend listens for this via `roomUsers`.
             io.to(roomId).emit("roomUsers", getUsersInRoom(roomId));
 
-            // NEW: symmetric with the "left the room" message on disconnect —
-            // previously only "left" existed, so a room only ever announced
-            // half of the lifecycle. Fire-and-forget; entry already succeeded
-            // regardless of whether this persists.
             createSystemMessage(roomId, `${identity.displayName} joined the room.`)
                 .then((msg) => { if (msg) io.to(roomId).emit("receiveMessage", msg); });
 
@@ -104,10 +87,6 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
     });
 
     // 2b. LEAVE ROOM
-    // Previously missing entirely — the frontend already emitted this event
-    // on every navigation away from a room, but nothing on the server was
-    // listening, so the socket stayed in the Socket.IO room and in
-    // `roomToSockets` forever (until full disconnect).
     socket.on("leaveRoom", (roomId: string) => {
         if (!socket.rooms.has(roomId)) return;
 
@@ -244,6 +223,16 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
 
         for (const room of socket.rooms) {
             if (room === socket.id) continue;
+
+            // THE FIX: `socket.rooms` also contains virtual/non-chat rooms —
+            // specifically `user:${id}`, joined in socket/index.ts for
+            // authenticated users' future notifications. That's not backed
+            // by a real `Room` row, so treating it like a chat room here
+            // caused a foreign key violation on every disconnect for logged
+            // -in users. `roomToSockets` is OUR OWN bookkeeping of rooms
+            // actually entered via `enterRoom`/`joinRoom` — only those are
+            // real chat rooms.
+            if (!roomToSockets.get(room)?.has(socket.id)) continue;
 
             if (entry) {
                 const msg = await createSystemMessage(room, `${entry.displayName} left the room.`);

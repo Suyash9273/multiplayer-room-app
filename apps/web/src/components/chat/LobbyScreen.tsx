@@ -7,6 +7,7 @@ import { useSessionStore } from "@/store/sessionStore"
 
 import RoomEntryForm from "./RoomEntryForm"
 import AnonymousRoomStarter from "./AnonymousRoomStarter"
+import FindStrangerButton from "./FindStrangerButton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
 import { FriendList } from "./FriendList"
 import { FriendRequests } from "./FriendRequests"
@@ -80,6 +81,15 @@ export default function LobbyScreen() {
                     </CardHeader>
 
                     <CardContent className="flex flex-col gap-4">
+                        <FindStrangerButton />
+                        <div className="relative">
+                            <div className="absolute inset-0 flex items-center">
+                                <span className="w-full border-t" />
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                                <span className="bg-background px-2 text-muted-foreground">or</span>
+                            </div>
+                        </div>
                         <RoomEntryForm />
                         <div className="relative">
                             <div className="absolute inset-0 flex items-center">

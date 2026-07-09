@@ -4,6 +4,7 @@ import { prisma } from "@multiplayer/db";
 import { resolveIdentity } from "../lib/identity.js";
 import { removeUser, getOnlineUsers } from "./presence.js";
 import { registerRoomHandlers } from "./handlers/room.handlers.js";
+import { registerMatchmakingHandlers } from "./handlers/matchmaking.handlers.js";
 import type { AppSocketData } from "./types.js";
 // import { registerFriendHandlers } from "./handlers/friend.handlers.js";
 
@@ -64,6 +65,7 @@ export const initializeSocket = (httpServer: HttpServer) => {
 
         // --- REGISTER MODULAR HANDLERS ---
         registerRoomHandlers(io, socket);
+        registerMatchmakingHandlers(io, socket);
         // registerFriendHandlers(io, socket);
         // registerDMHandlers(io, socket);
 

@@ -11,30 +11,14 @@ import { usePresenceStore } from "@/store/presenceStore"
 // the actual identity via its auth middleware and hands it back through
 // the "join" ack. We store what the SERVER confirmed, not what we assumed,
 // so the UI can never drift from what the backend will actually enforce.
+// Kicks off the connection. The actual identity handshake ("join" emit +
+// ack) now lives in socket.ts's persistent "connect" listener, so it
+// re-runs on every connect — including automatic reconnects — not just
+// this first one. This function just needs to start the connection and
+// clear any stale error from a previous failed attempt.
 export function join() {
   useSessionStore.getState().setJoinError(null)
   socket.connect()
-
-  // If the socket auth middleware rejects the connection (no valid
-  // session/guest cookie, or a server-side exception resolving identity),
-  // Socket.IO fires "connect_error" — NOT "connect". Without this handler
-  // the UI just sat on "Reconnecting..." forever with no signal why.
-  socket.once("connect_error", (err) => {
-    console.error("[socket] connect_error:", err.message)
-    useSessionStore.getState().setJoinError(err.message || "Failed to connect")
-  })
-
-  socket.once("connect", () => {
-    socket.emit(
-      "join",
-      (identity: { id: string; displayName: string; type: "user" | "guest" }) => {
-        useSessionStore.getState().setUserId(identity.id)
-        useSessionStore.getState().setUsername(identity.displayName)
-        useSessionStore.getState().setIdentityType(identity.type)
-        useSessionStore.getState().setIsJoined(true)
-      }
-    )
-  })
 }
 
 export function enterRoom(roomId: string) {
@@ -104,6 +88,19 @@ export function sendMessage(payload: SendMessagePayload) {
       }
     }
   )
+}
+
+// MATCHMAKING
+// Puts this socket in the server's waiting queue; it'll get paired with
+// the next other waiting stranger (or immediately, if someone's already
+// waiting). Listen for "waitingForMatch" / "matchFound" / "matchmakingError"
+// — see FindStrangerButton.tsx.
+export function findMatch() {
+  socket.emit("findMatch")
+}
+
+export function cancelFindMatch() {
+  socket.emit("cancelFindMatch")
 }
 
 // READ RECEIPTS
