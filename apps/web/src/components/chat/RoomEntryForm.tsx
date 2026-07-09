@@ -1,62 +1,72 @@
 "use client"
 
-import{ useState } from 'react'
-import CornerCutButton from '../neonblade-ui/corner-cut-button'
-import NeonInput from '../neonblade-ui/neon-input'
-import { useRouter } from "next/navigation";
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { BACKEND_URL } from "@/lib/socket"
 
+// Joining a room by typing its id only makes sense for a room you're
+// ALREADY a member of, or an ANONYMOUS room someone shared the id of with
+// you — typing an arbitrary string was navigating straight to /room/{id}
+// with no validation at all. Both `enterRoom` (socket) and the history
+// fetch (REST) correctly refuse a room you're not a member of, but they do
+// it SILENTLY — you'd just land in a dead, empty room with no explanation
+// and a console error. This now calls the same join-by-id endpoint
+// AnonymousRoomStarter/matchmaking use, and only navigates on success.
 const RoomEntryForm = () => {
   const [roomId, setRoomId] = useState<string>("")
+  const [isJoining, setIsJoining] = useState(false)
+  const [error, setError] = useState("")
   const router = useRouter()
 
-  const handleJoinRoom = (e: React.FormEvent) => {
+  const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!roomId.trim()) return;
-    
-    // Instead of setCurrentRoom(roomInput), do this:
-    router.push(`/room/${roomId}`);
-};
+    const trimmed = roomId.trim();
+    if (!trimmed || isJoining) return;
+
+    setIsJoining(true);
+    setError("");
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/rooms/anonymous/${trimmed}/join`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        setError(
+          res.status === 404
+            ? "Room not found. Check the ID and try again."
+            : "Couldn't join that room. Try again."
+        );
+        return;
+      }
+
+      router.push(`/room/${trimmed}`);
+    } catch (err) {
+      console.error("Failed to join room by id:", err);
+      setError("Couldn't reach the server. Try again.");
+    } finally {
+      setIsJoining(false);
+    }
+  };
 
   return (
-    <div className="flex w-full justify-center">
-        <div className="flex w-full max-w-sm flex-col gap-6 border border-cyan-500/30 bg-[#0a0f14] p-6">
-
-          <div className="relative z-10">
-            <h2 className="mb-1 font-orbitron text-xl uppercase text-cyan-400">
-              Room Access
-            </h2>
-            <p className="text-sm text-cyan-400/65">
-              Enter roomId
-            </p>
-          </div>
-
-          <form className="flex flex-col gap-5"
-          onSubmit={handleJoinRoom}
-          >
-            <NeonInput
-              shape="corner-cut"
-              corner="tl-br"
-              cornerSize={10}
-              color="cyan"
-              label="room_id"
-              placeholder="Enter room_id"
-              glowIntensity="strong"
-              value={roomId}
-              onChange={(e) => setRoomId(e.target.value)}
-            />
-
-            <CornerCutButton
-              color="cyan"
-              showArrow
-              hoverEffect="glow"
-              type="submit"
-            >
-              Enter Room
-            </CornerCutButton>
-          </form>
-
-        </div>
+    <form className="flex flex-col gap-3" onSubmit={handleJoinRoom}>
+      <div className="flex gap-2">
+        <Input
+          placeholder="Enter a room id..."
+          value={roomId}
+          onChange={(e) => setRoomId(e.target.value)}
+          disabled={isJoining}
+        />
+        <Button type="submit" disabled={isJoining}>
+          {isJoining ? "Joining..." : "Join"}
+        </Button>
       </div>
+      {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
+    </form>
   )
 }
 
