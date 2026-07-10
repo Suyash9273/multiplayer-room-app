@@ -1,23 +1,12 @@
 import { Router, Request, Response } from "express";
 import { requireIdentity } from "../middleware/auth.js";
 import { prisma } from "@multiplayer/db";
+import { getInterests } from "../lib/interests.js";
 
 const router = Router();
 
 const MAX_INTERESTS = 10;
 const MAX_TAG_LENGTH = 30;
-
-// Shared by GET and PUT — same identity, same "which table" branch either
-// way. Keeping this in one place is what guarantees the two routes below
-// can never drift into checking different tables for the same identity.
-async function getInterests(identity: { type: "user" | "guest"; id: string }): Promise<string[]> {
-    if (identity.type === "user") {
-        const user = await prisma.user.findUnique({ where: { id: identity.id }, select: { interests: true } });
-        return user?.interests ?? [];
-    }
-    const guest = await prisma.guestIdentity.findUnique({ where: { id: identity.id }, select: { interests: true } });
-    return guest?.interests ?? [];
-}
 
 // GET /api/profile/interests
 // Works identically for a real user or a guest — the whole point of

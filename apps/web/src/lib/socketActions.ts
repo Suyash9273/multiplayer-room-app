@@ -91,12 +91,12 @@ export function sendMessage(payload: SendMessagePayload) {
 }
 
 // MATCHMAKING
-// Puts this socket in the server's waiting queue; it'll get paired with
-// the next other waiting stranger (or immediately, if someone's already
-// waiting). Listen for "waitingForMatch" / "matchFound" / "matchmakingError"
-// — see FindStrangerButton.tsx.
-export function findMatch() {
-  socket.emit("findMatch")
+// duration: 5000 | 10000 | null ("forever" — only ever pairs on a shared
+// interest, never falls back to a random stranger on its own).
+// Listen for "waitingForMatch" / "fallbackActive" / "matchFound" /
+// "matchmakingError" — see FindStrangerButton.tsx.
+export function findMatch(duration: number | null) {
+  socket.emit("findMatch", { duration })
 }
 
 export function cancelFindMatch() {

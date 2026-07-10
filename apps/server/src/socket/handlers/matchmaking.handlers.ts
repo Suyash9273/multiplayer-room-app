@@ -1,83 +1,154 @@
 import { prisma } from "@multiplayer/db";
 import type { AppServer, AppSocket } from "../types.js";
+import { getInterests } from "../../lib/interests.js";
 
-// In-memory FIFO queue of sockets waiting to be paired with a random
-// stranger. Deliberately simple (no interest-based matching yet —
-// GuestIdentity.interests is reserved for that as a future enhancement)
-// and deliberately in-memory: unlike rooms/messages, queue state doesn't
-// need to survive a server restart. Works identically for real users and
-// guests — a socket is a socket, the identity behind it doesn't matter
-// for pairing purposes.
-const waitingQueue: AppSocket[] = [];
+// One waiting entry per searching socket. `fallbackActive` starts true for
+// anyone with no interests set (nothing to match on, so accept anyone
+// immediately — same as the old pure-FIFO behavior) and flips true for
+// everyone else once their chosen timer (5s/10s) elapses without an
+// interest-overlap match. "Forever" means `timer` is never set, so
+// fallbackActive can only ever become true if interests is empty.
+interface QueueEntry {
+    socket: AppSocket;
+    interests: string[];
+    fallbackActive: boolean;
+    timer: ReturnType<typeof setTimeout> | null;
+}
 
-function removeFromQueue(socket: AppSocket) {
-    const idx = waitingQueue.indexOf(socket);
+const waitingQueue: QueueEntry[] = [];
+
+function removeFromQueue(entry: QueueEntry) {
+    if (entry.timer) clearTimeout(entry.timer);
+    const idx = waitingQueue.indexOf(entry);
     if (idx !== -1) waitingQueue.splice(idx, 1);
+}
+
+function hasOverlap(a: QueueEntry, b: QueueEntry): boolean {
+    if (a.socket.data.identity.id === b.socket.data.identity.id) return false; // never match yourself
+    return a.interests.some((tag) => b.interests.includes(tag));
+}
+
+// Two-pass search: always prefer an actual shared interest over a
+// fallback pairing, even for someone whose own fallback is already active
+// (e.g. they had zero interests set) — a lucky overlap is still better
+// than a random stranger.
+function findPartnerIndex(entry: QueueEntry): number {
+    let idx = waitingQueue.findIndex((other) => other !== entry && other.socket.connected && hasOverlap(entry, other));
+    if (idx !== -1) return idx;
+
+    // Fallback pairing requires BOTH sides to be open to a non-interest
+    // match — someone who picked "forever" is explicitly saying "only
+    // match me on shared interests", and that has to be respected even if
+    // the other person in the queue has already given up on theirs.
+    if (entry.fallbackActive) {
+        idx = waitingQueue.findIndex(
+            (other) =>
+                other !== entry &&
+                other.socket.connected &&
+                other.fallbackActive &&
+                other.socket.data.identity.id !== entry.socket.data.identity.id
+        );
+    }
+    return idx;
+}
+
+async function createMatchRoom(a: AppSocket, b: AppSocket) {
+    const identityA = a.data.identity;
+    const identityB = b.data.identity;
+
+    try {
+        const room = await prisma.room.create({
+            data: {
+                type: "ANONYMOUS",
+                members: {
+                    create: [
+                        identityA.type === "user" ? { userId: identityA.id } : { guestId: identityA.id },
+                        identityB.type === "user" ? { userId: identityB.id } : { guestId: identityB.id },
+                    ],
+                },
+            },
+        });
+
+        a.emit("matchFound", { roomId: room.id });
+        b.emit("matchFound", { roomId: room.id });
+    } catch (error) {
+        console.error("[matchmaking] Failed to create match room:", error);
+        a.emit("matchmakingError", "Failed to create a match. Please try again.");
+        b.emit("matchmakingError", "Your match failed to connect. Please try again.");
+    }
+}
+
+async function pairEntries(a: QueueEntry, b: QueueEntry) {
+    removeFromQueue(a);
+    removeFromQueue(b);
+    await createMatchRoom(a.socket, b.socket);
 }
 
 export const registerMatchmakingHandlers = (io: AppServer, socket: AppSocket) => {
     const identity = socket.data.identity;
 
-    // Client asks to be paired with the next available stranger.
-    socket.on("findMatch", async () => {
-        // Already in the queue from a previous click? Don't queue twice.
-        if (waitingQueue.includes(socket)) return;
+    // durationMs: 5000 | 10000 | null ("forever" — never falls back to a
+    // non-interest match on its own; only pairs if someone else's
+    // fallback happens to reach it, or an actual overlap shows up).
+    socket.on("findMatch", async (payload?: { duration?: number | null }) => {
+        if (waitingQueue.some((e) => e.socket === socket)) return; // already searching
 
-        // Find the first WAITING candidate that (a) is still actually
-        // connected — a socket can linger in the queue for a moment after
-        // a hard disconnect, before the "disconnect" cleanup below runs —
-        // and (b) isn't this same identity's other tab (pairing someone
-        // with themselves defeats the point of "meet a stranger").
-        const partnerIndex = waitingQueue.findIndex(
-            (candidate) => candidate.connected && candidate.data.identity.id !== identity.id
-        );
+        // Opportunistic cleanup of any stale/disconnected entries.
+        for (let i = waitingQueue.length - 1; i >= 0; i--) {
+            if (!waitingQueue[i].socket.connected) removeFromQueue(waitingQueue[i]);
+        }
 
-        if (partnerIndex === -1) {
-            // Nobody eligible waiting — opportunistically prune any dead
-            // entries while we're here, then take this socket's place in line.
-            for (let i = waitingQueue.length - 1; i >= 0; i--) {
-                if (!waitingQueue[i].connected) waitingQueue.splice(i, 1);
-            }
-            waitingQueue.push(socket);
-            socket.emit("waitingForMatch");
+        // Read FRESH from the DB — not whatever was true when this socket
+        // first connected. Interests are meant to be editable anytime from
+        // the profile screen and take effect on the very next search.
+        let interests: string[] = [];
+        try {
+            interests = await getInterests(identity);
+        } catch (error) {
+            console.error("[findMatch] Failed to load interests:", error);
+        }
+
+        const durationMs = payload?.duration ?? null;
+        const entry: QueueEntry = {
+            socket,
+            interests,
+            fallbackActive: interests.length === 0, // nothing to match on -> old FIFO behavior
+            timer: null,
+        };
+
+        const partnerIdx = findPartnerIndex(entry);
+        if (partnerIdx !== -1) {
+            await pairEntries(entry, waitingQueue[partnerIdx]);
             return;
         }
 
-        const [partner] = waitingQueue.splice(partnerIndex, 1);
-        const partnerIdentity = partner.data.identity;
+        waitingQueue.push(entry);
+        socket.emit("waitingForMatch");
 
-        try {
-            // Same shape as POST /api/rooms/anonymous — a Room + two
-            // RoomMember rows, one per identity, branching on user vs guest.
-            const room = await prisma.room.create({
-                data: {
-                    type: "ANONYMOUS",
-                    members: {
-                        create: [
-                            identity.type === "user" ? { userId: identity.id } : { guestId: identity.id },
-                            partnerIdentity.type === "user" ? { userId: partnerIdentity.id } : { guestId: partnerIdentity.id },
-                        ],
-                    },
-                },
-            });
+        if (!entry.fallbackActive && durationMs != null) {
+            entry.timer = setTimeout(async () => {
+                entry.fallbackActive = true;
+                entry.timer = null;
 
-            socket.emit("matchFound", { roomId: room.id });
-            partner.emit("matchFound", { roomId: room.id });
-        } catch (error) {
-            console.error("[findMatch] Failed to create match room:", error);
-            socket.emit("matchmakingError", "Failed to create a match. Please try again.");
-            partner.emit("matchmakingError", "Your match failed to connect. Please try again.");
+                // Someone might already be sitting in the queue we can grab
+                // right now, rather than waiting for the NEXT findMatch call.
+                const idx = findPartnerIndex(entry);
+                if (idx !== -1) {
+                    await pairEntries(entry, waitingQueue[idx]);
+                } else {
+                    socket.emit("fallbackActive");
+                }
+            }, durationMs);
         }
     });
 
-    // Client gives up waiting (clicked cancel, or navigated away).
     socket.on("cancelFindMatch", () => {
-        removeFromQueue(socket);
+        const entry = waitingQueue.find((e) => e.socket === socket);
+        if (entry) removeFromQueue(entry);
     });
 
-    // Safety net: never leave a dead socket sitting in the queue where it
-    // could get "matched" to someone who then finds nobody on the other end.
     socket.on("disconnect", () => {
-        removeFromQueue(socket);
+        const entry = waitingQueue.find((e) => e.socket === socket);
+        if (entry) removeFromQueue(entry);
     });
 };
