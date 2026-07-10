@@ -6,7 +6,16 @@ import {
     getUsersInRoom, socketToIdentity, roomToSockets
 } from "../presence.js";
 
+// dmAuth.js is fully deprecated now — the database (RoomMember rows) is the
+// single source of truth for "who is allowed in this room", checked fresh
+// on every enterRoom/sendMessage. No string-based room ID parsing needed.
 
+// Shared by the join-message, leave-message (explicit leaveRoom), and
+// leave-message (disconnect) call sites so all three system messages are
+// persisted the exact same way. Returns the formatted message; the CALLER
+// decides how to broadcast it (io.to vs socket.to — see disconnecting
+// below, where the socket hasn't technically left the room yet and so
+// needs to be excluded explicitly).
 async function createSystemMessage(roomId: string, text: string): Promise<ChatMessage | null> {
     try {
         const sysMsg = await prisma.message.create({
@@ -34,10 +43,43 @@ async function createSystemMessage(roomId: string, text: string): Promise<ChatMe
     }
 }
 
+// Called whenever a socket leaves a room (explicit leaveRoom OR
+// disconnect), AFTER presence.leaveRoom() has already run. If nobody is
+// actively connected to the room anymore AND it's an ANONYMOUS room, we
+// delete it — Room.delete() cascades to RoomMember and Message rows (see
+// schema), so this cleans up everything in one call.
+//
+// Deliberately scoped to ANONYMOUS only: a DIRECT (DM) or GROUP room must
+// survive both parties being offline — that's the entire point of
+// persisted chat history for real accounts. Anonymous rooms are the one
+// case where "nobody's here anymore" genuinely means "this conversation
+// is over and nobody is ever coming back to it".
+async function cleanupIfEmptyAnonymousRoom(roomId: string) {
+    if (roomToSockets.has(roomId)) return; // someone's still actively connected
+
+    try {
+        const room = await prisma.room.findUnique({ where: { id: roomId }, select: { type: true } });
+        if (!room || room.type !== "ANONYMOUS") return;
+
+        await prisma.room.delete({ where: { id: roomId } });
+        console.log(`[cleanup] Deleted empty anonymous room ${roomId}`);
+    } catch (error) {
+        // P2025 = "record not found" — expected if two near-simultaneous
+        // leaves both trigger this and the other one already deleted it.
+        if ((error as { code?: string })?.code !== "P2025") {
+            console.error(`[cleanup] Failed to clean up room ${roomId}:`, error);
+        }
+    }
+}
+
 export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
     const identity = socket.data.identity;
 
     // 1. PRESENCE & LOBBY JOIN
+    // No payload needed — the client can't tell us who it is, the verified
+    // identity already lives on the socket from the auth middleware. We
+    // ack back the resolved identity so the frontend can render the
+    // correct display name without ever having asserted it itself.
     socket.on("join", (ack?: (identity: { id: string; displayName: string; type: string }) => void) => {
         addUser(identity, socket.id);
         io.emit("onlineUsers", getOnlineUsers());
@@ -61,7 +103,7 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
 
             if (!membership) {
                 console.warn(`[SECURITY] ${identity.type}:${identity.id} denied entry to ${roomId}. Not a member.`);
-                return; 
+                return; // Silently refuse
             }
 
             if (socket.rooms.has(roomId)) {
@@ -76,6 +118,10 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
             // the current roster. The frontend listens for this via `roomUsers`.
             io.to(roomId).emit("roomUsers", getUsersInRoom(roomId));
 
+            // NEW: symmetric with the "left the room" message on disconnect —
+            // previously only "left" existed, so a room only ever announced
+            // half of the lifecycle. Fire-and-forget; entry already succeeded
+            // regardless of whether this persists.
             createSystemMessage(roomId, `${identity.displayName} joined the room.`)
                 .then((msg) => { if (msg) io.to(roomId).emit("receiveMessage", msg); });
 
@@ -87,14 +133,26 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
     });
 
     // 2b. LEAVE ROOM
-    socket.on("leaveRoom", (roomId: string) => {
+    // Previously missing entirely — the frontend already emitted this event
+    // on every navigation away from a room, but nothing on the server was
+    // listening, so the socket stayed in the Socket.IO room and in
+    // `roomToSockets` forever (until full disconnect).
+    socket.on("leaveRoom", async (roomId: string) => {
         if (!socket.rooms.has(roomId)) return;
 
         socket.leave(roomId);
         leaveRoom(roomId, socket.id);
         io.to(roomId).emit("roomUsers", getUsersInRoom(roomId));
-        createSystemMessage(roomId, `${identity.displayName} left the room.`)
-            .then((msg) => { if (msg) io.to(roomId).emit("receiveMessage", msg); });
+
+        // Awaited (not fire-and-forget) so the "left the room" message is
+        // safely written BEFORE we potentially delete the room a few lines
+        // down — otherwise a race could try to insert a message into a
+        // room that no longer exists (the exact FK-violation class of bug
+        // fixed earlier for the disconnecting-loop case).
+        const msg = await createSystemMessage(roomId, `${identity.displayName} left the room.`);
+        if (msg) io.to(roomId).emit("receiveMessage", msg);
+
+        await cleanupIfEmptyAnonymousRoom(roomId);
     });
 
     // 3. SECURE MESSAGE BROADCASTING
@@ -245,6 +303,8 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
             leaveRoom(room, socket.id);
             // Recompute for whoever's left, after this socket's leave is applied
             socket.to(room).emit("roomUsers", getUsersInRoom(room));
+
+            await cleanupIfEmptyAnonymousRoom(room);
         }
     });
 };

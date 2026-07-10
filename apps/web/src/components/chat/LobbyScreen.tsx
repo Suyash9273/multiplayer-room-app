@@ -10,6 +10,7 @@ import { BACKEND_URL } from "@/lib/socket"
 import LobbyHeader from "./LobbyHeader"
 import RoomEntryForm from "./RoomEntryForm"
 import FindStrangerButton from "./FindStrangerButton"
+import CreateRoomCard from "./CreateRoomCard"
 
 // Deliberately minimal now — this used to be one large file doing
 // everything (online users list, join-room form, friends tabs, pending
@@ -76,6 +77,15 @@ export default function LobbyScreen() {
                         </div>
                     </div>
                     <RoomEntryForm />
+                    <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-background px-2 text-muted-foreground">or</span>
+                        </div>
+                    </div>
+                    <CreateRoomCard />
                 </CardContent>
             </Card>
         </div>
