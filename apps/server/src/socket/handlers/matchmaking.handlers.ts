@@ -1,6 +1,7 @@
 import { prisma } from "@multiplayer/db";
 import type { AppServer, AppSocket } from "../types.js";
 import { getInterests } from "../../lib/interests.js";
+import { findPartnerIndex, type MatchCandidate } from "../../lib/matchmakingLogic.js";
 
 // One waiting entry per searching socket. `fallbackActive` starts true for
 // anyone with no interests set (nothing to match on, so accept anyone
@@ -8,10 +9,12 @@ import { getInterests } from "../../lib/interests.js";
 // everyone else once their chosen timer (5s/10s) elapses without an
 // interest-overlap match. "Forever" means `timer` is never set, so
 // fallbackActive can only ever become true if interests is empty.
-interface QueueEntry {
+//
+// Satisfies MatchCandidate (identityId/interests/fallbackActive) so the
+// pure matching policy in matchmakingLogic.ts can operate on it directly
+// without needing to know anything about sockets.
+interface QueueEntry extends MatchCandidate {
     socket: AppSocket;
-    interests: string[];
-    fallbackActive: boolean;
     timer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -23,33 +26,10 @@ function removeFromQueue(entry: QueueEntry) {
     if (idx !== -1) waitingQueue.splice(idx, 1);
 }
 
-function hasOverlap(a: QueueEntry, b: QueueEntry): boolean {
-    if (a.socket.data.identity.id === b.socket.data.identity.id) return false; // never match yourself
-    return a.interests.some((tag) => b.interests.includes(tag));
-}
-
-// Two-pass search: always prefer an actual shared interest over a
-// fallback pairing, even for someone whose own fallback is already active
-// (e.g. they had zero interests set) — a lucky overlap is still better
-// than a random stranger.
-function findPartnerIndex(entry: QueueEntry): number {
-    let idx = waitingQueue.findIndex((other) => other !== entry && other.socket.connected && hasOverlap(entry, other));
-    if (idx !== -1) return idx;
-
-    // Fallback pairing requires BOTH sides to be open to a non-interest
-    // match — someone who picked "forever" is explicitly saying "only
-    // match me on shared interests", and that has to be respected even if
-    // the other person in the queue has already given up on theirs.
-    if (entry.fallbackActive) {
-        idx = waitingQueue.findIndex(
-            (other) =>
-                other !== entry &&
-                other.socket.connected &&
-                other.fallbackActive &&
-                other.socket.data.identity.id !== entry.socket.data.identity.id
-        );
-    }
-    return idx;
+// Liveness filter — the pure matching policy assumes everyone it's given
+// is actually still connected; this is where that assumption gets made true.
+function connectedQueue(): QueueEntry[] {
+    return waitingQueue.filter((e) => e.socket.connected);
 }
 
 async function createMatchRoom(a: AppSocket, b: AppSocket) {
@@ -111,14 +91,15 @@ export const registerMatchmakingHandlers = (io: AppServer, socket: AppSocket) =>
         const durationMs = payload?.duration ?? null;
         const entry: QueueEntry = {
             socket,
+            identityId: identity.id,
             interests,
             fallbackActive: interests.length === 0, // nothing to match on -> old FIFO behavior
             timer: null,
         };
 
-        const partnerIdx = findPartnerIndex(entry);
+        const partnerIdx = findPartnerIndex(entry, connectedQueue());
         if (partnerIdx !== -1) {
-            await pairEntries(entry, waitingQueue[partnerIdx]);
+            await pairEntries(entry, connectedQueue()[partnerIdx]);
             return;
         }
 
@@ -132,9 +113,9 @@ export const registerMatchmakingHandlers = (io: AppServer, socket: AppSocket) =>
 
                 // Someone might already be sitting in the queue we can grab
                 // right now, rather than waiting for the NEXT findMatch call.
-                const idx = findPartnerIndex(entry);
+                const idx = findPartnerIndex(entry, connectedQueue());
                 if (idx !== -1) {
-                    await pairEntries(entry, waitingQueue[idx]);
+                    await pairEntries(entry, connectedQueue()[idx]);
                 } else {
                     socket.emit("fallbackActive");
                 }

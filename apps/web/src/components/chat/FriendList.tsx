@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSessionStore } from "@/store/sessionStore"
 import { Button } from "@/components/ui/button"
-import { MessageSquare, Loader2 } from "lucide-react"
+import { MessageSquare, Loader2, UserMinus } from "lucide-react"
 import { BACKEND_URL } from "@/lib/socket"
 
 import { useFriendStore } from "@/store/friendStore"
@@ -32,6 +32,27 @@ export function FriendList() {
 
     // NEW: Local state to prevent spam-clicking while the database provisions the room
     const [isNavigating, setIsNavigating] = useState(false);
+    const [removingId, setRemovingId] = useState<string | null>(null);
+
+    const handleRemoveFriend = async (friendshipId: string) => {
+        if (removingId) return;
+        setRemovingId(friendshipId);
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/friends/remove`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ friendshipId }),
+            });
+            if (res.ok) {
+                useFriendStore.getState().removeFriend(friendshipId);
+            }
+        } catch (error) {
+            console.error("Failed to remove friend:", error);
+        } finally {
+            setRemovingId(null);
+        }
+    };
 
     // ============================================================================
     // THE NEW SECURE DM ROUTER
@@ -135,6 +156,21 @@ export function FriendList() {
                                                     <MessageSquare className="h-4 w-4 mr-2" />
                                                 )}
                                                 {isNavigating ? "Routing..." : "Message"}
+                                            </Button>
+
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                disabled={removingId === friend.friendshipId}
+                                                onClick={() => handleRemoveFriend(friend.friendshipId)}
+                                                aria-label={`Remove ${displayUsername}`}
+                                                className="text-muted-foreground hover:text-red-500"
+                                            >
+                                                {removingId === friend.friendshipId ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <UserMinus className="h-4 w-4" />
+                                                )}
                                             </Button>
                                         </div>
                                     </div>

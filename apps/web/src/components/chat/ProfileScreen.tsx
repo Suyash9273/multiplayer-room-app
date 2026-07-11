@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { X, ArrowLeft } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { X, ArrowLeft, LogOut } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 
 import { useSessionStore } from "@/store/sessionStore"
 import { BACKEND_URL } from "@/lib/socket"
+import { logout } from "@/lib/logout"
 
 const MAX_INTERESTS = 10
 
@@ -20,6 +22,15 @@ const MAX_INTERESTS = 10
 export default function ProfileScreen() {
     const username = useSessionStore((s) => s.username)
     const identityType = useSessionStore((s) => s.identityType)
+    const router = useRouter()
+
+    const [isLoggingOut, setIsLoggingOut] = useState(false)
+
+    const handleLogout = async () => {
+        setIsLoggingOut(true)
+        await logout()
+        router.push("/")
+    }
 
     const [interests, setInterests] = useState<string[]>([])
     const [newTag, setNewTag] = useState("")
@@ -97,9 +108,21 @@ export default function ProfileScreen() {
             </Button>
 
             <Card>
-                <CardHeader>
-                    <CardTitle>{username}</CardTitle>
-                    <CardDescription className="capitalize">{identityType} account</CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                    <div>
+                        <CardTitle>{username}</CardTitle>
+                        <CardDescription className="capitalize">{identityType} account</CardDescription>
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-red-500 hover:text-red-500"
+                        onClick={handleLogout}
+                        disabled={isLoggingOut}
+                    >
+                        <LogOut className="h-4 w-4" />
+                        {isLoggingOut ? "Logging out..." : "Log Out"}
+                    </Button>
                 </CardHeader>
             </Card>
 

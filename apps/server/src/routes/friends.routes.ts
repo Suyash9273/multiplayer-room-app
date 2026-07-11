@@ -224,4 +224,43 @@ router.post("/decline", requireAuth, async (req, res) => {
     }
 })
 
+// POST /api/friends/remove
+// Deletes an ACCEPTED friendship. Either party can remove it — there's no
+// "sender/receiver" asymmetry once accepted, unlike request/accept/decline.
+router.post("/remove", requireAuth, async (req, res) => {
+    try {
+        const userId = req.user!.id
+        const { friendshipId } = req.body
+
+        const friendship = await prisma.friendship.findUnique({
+            where: { id: friendshipId }
+        });
+
+        if (!friendship) {
+            return res.status(404).json({ error: "Friendship not found" });
+        }
+
+        // Must be one of the two parties — can't remove someone else's friendship
+        if (friendship.senderId !== userId && friendship.receiverId !== userId) {
+            return res.status(403).json({ error: "Unauthorized" });
+        }
+
+        await prisma.friendship.delete({ where: { id: friendshipId } });
+
+        // Notify the OTHER party in real time so their friend list updates
+        // without needing a refresh. The caller's own list updates from the
+        // REST response directly — no need to wait for a socket round trip.
+        const otherPartyId = friendship.senderId === userId ? friendship.receiverId : friendship.senderId;
+        const io = req.app.get("io");
+        if (io) {
+            io.to(`user:${otherPartyId}`).emit("friendRemoved", { friendshipId });
+        }
+
+        return res.status(200).json({ success: true });
+    } catch (error) {
+        console.error("Remove Friend Error:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+})
+
 export default router;

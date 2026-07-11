@@ -30,6 +30,7 @@ type FriendState = {
 
     setFriends: (friends: Friend[]) => void;
     addFriend: (friend: Friend) => void;
+    removeFriend: (friendshipId: string) => void;
 
     setHydrated: (status: boolean) => void;
 }
@@ -63,6 +64,11 @@ export const useFriendStore = create<FriendState>((set) => ({
             if (state.friends.some(f => f.friendshipId === friend.friendshipId)) return state
             return { friends: [...state.friends, friend] }
         }),
-    
+
+    removeFriend: (friendshipId) =>
+        set((state) => ({
+            friends: state.friends.filter((f) => f.friendshipId !== friendshipId)
+        })),
+
     setHydrated: (status) => set({isHydrated: status})
 }))

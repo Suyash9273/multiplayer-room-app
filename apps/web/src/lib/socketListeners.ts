@@ -43,6 +43,10 @@ export function registerSocketListeners() {
         useChatStore.getState().markRoomMessagesAsRead(roomId, readAt)
     }
 
+    const onFriendRemoved = ({ friendshipId }: { friendshipId: string }) => {
+        useFriendStore.getState().removeFriend(friendshipId)
+    }
+
     socket.on("onlineUsers", onOnlineUsers)
     socket.on("roomUsers", onRoomUsers)
     socket.on("receiveMessage", onReceiveMessage)
@@ -51,6 +55,7 @@ export function registerSocketListeners() {
     socket.on("friendRequestReceived", onFriendRequestReceived)
     socket.on("friendRequestAccepted", onFriendRequestAccepted)
     socket.on("messagesRead", onMessagesRead)
+    socket.on("friendRemoved", onFriendRemoved)
 
     // return cleanup so whoever calls this can tear it down if needed
     return () => {
@@ -62,5 +67,6 @@ export function registerSocketListeners() {
         socket.off("friendRequestReceived", onFriendRequestReceived)
         socket.off("friendRequestAccepted", onFriendRequestAccepted)
         socket.off("messagesRead", onMessagesRead)
+        socket.off("friendRemoved", onFriendRemoved)
     }
 }

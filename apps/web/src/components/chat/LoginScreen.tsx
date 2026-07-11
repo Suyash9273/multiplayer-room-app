@@ -1,12 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { useSession, signIn, signOut, authClient } from "@/lib/auth-client"
+import { useSession, signIn, authClient } from "@/lib/auth-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { join } from "@/lib/socketActions"
 import { mintGuestIdentity } from "@/lib/guest"
+import { logout } from "@/lib/logout"
 
 type ExtendedUser = {
   id: string;
@@ -164,7 +165,7 @@ export default function LoginScreen() {
           <Button className="w-full" size="lg" onClick={handleEnterLobby}>
             Enter Lobby
           </Button>
-          <Button variant="ghost" className="w-full" onClick={() => signOut()}>
+          <Button variant="ghost" className="w-full" onClick={() => logout()}>
             Sign Out
           </Button>
         </CardContent>
