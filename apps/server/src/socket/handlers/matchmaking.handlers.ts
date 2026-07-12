@@ -2,6 +2,7 @@ import { prisma } from "@multiplayer/db";
 import type { AppServer, AppSocket } from "../types.js";
 import { getInterests } from "../../lib/interests.js";
 import { findPartnerIndex, type MatchCandidate } from "../../lib/matchmakingLogic.js";
+import { matchmakingLimiter } from "../../lib/limiters.js";
 
 // One waiting entry per searching socket. `fallbackActive` starts true for
 // anyone with no interests set (nothing to match on, so accept anyone
@@ -73,6 +74,12 @@ export const registerMatchmakingHandlers = (io: AppServer, socket: AppSocket) =>
     socket.on("findMatch", async (payload?: { duration?: number | null }) => {
         if (waitingQueue.some((e) => e.socket === socket)) return; // already searching
 
+        if (!matchmakingLimiter.check(identity.id)) {
+            console.warn(`[rate-limit] ${identity.type}:${identity.id} exceeded findMatch limit`);
+            socket.emit("matchmakingError", "You're searching too frequently. Please wait a moment.");
+            return;
+        }
+
         // Opportunistic cleanup of any stale/disconnected entries.
         for (let i = waitingQueue.length - 1; i >= 0; i--) {
             if (!waitingQueue[i].socket.connected) removeFromQueue(waitingQueue[i]);
@@ -124,6 +131,7 @@ export const registerMatchmakingHandlers = (io: AppServer, socket: AppSocket) =>
     });
 
     socket.on("cancelFindMatch", () => {
+        if (!matchmakingLimiter.check(identity.id)) return; // fail silent — cancel is low-stakes
         const entry = waitingQueue.find((e) => e.socket === socket);
         if (entry) removeFromQueue(entry);
     });

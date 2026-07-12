@@ -5,6 +5,9 @@ import {
     addUser, getOnlineUsers, joinRoom, leaveRoom,
     getUsersInRoom, socketToIdentity, roomToSockets
 } from "../presence.js";
+import { messageLimiter, markReadLimiter, roomEntryLimiter } from "../../lib/limiters.js";
+
+const MAX_MESSAGE_LENGTH = 2000;
 
 // dmAuth.js is fully deprecated now — the database (RoomMember rows) is the
 // single source of truth for "who is allowed in this room", checked fresh
@@ -88,6 +91,11 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
 
     // 2. SECURE ROOM ENTRY (The DB Bouncer)
     socket.on("enterRoom", async (roomId: string) => {
+        if (!roomEntryLimiter.check(identity.id)) {
+            console.warn(`[rate-limit] ${identity.type}:${identity.id} exceeded enterRoom limit`);
+            return;
+        }
+
         try {
             // THE SHIELD: Verify relational membership in Prisma. Works
             // identically for a User row or a GuestIdentity row — that's
@@ -139,6 +147,10 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
     // `roomToSockets` forever (until full disconnect).
     socket.on("leaveRoom", async (roomId: string) => {
         if (!socket.rooms.has(roomId)) return;
+        if (!roomEntryLimiter.check(identity.id)) {
+            console.warn(`[rate-limit] ${identity.type}:${identity.id} exceeded leaveRoom limit`);
+            return;
+        }
 
         socket.leave(roomId);
         leaveRoom(roomId, socket.id);
@@ -163,6 +175,22 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
             ack?: (receipt: { status: "success" | "error"; data?: ChatMessage; error?: string }) => void
         ) => {
             const { roomId, message, type = "USER", id } = payload;
+
+            if (!messageLimiter.check(identity.id)) {
+                console.warn(`[rate-limit] ${identity.type}:${identity.id} exceeded sendMessage limit`);
+                ack?.({ status: "error", error: "You're sending messages too fast. Please slow down." });
+                return;
+            }
+
+            const trimmed = message?.trim();
+            if (!trimmed) {
+                ack?.({ status: "error", error: "Message cannot be empty." });
+                return;
+            }
+            if (trimmed.length > MAX_MESSAGE_LENGTH) {
+                ack?.({ status: "error", error: `Message is too long (max ${MAX_MESSAGE_LENGTH} characters).` });
+                return;
+            }
 
             try {
                 // ENFORCE AUTHORIZATION: Ensure they weren't kicked/removed before sending
@@ -234,6 +262,11 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
     // that's what flips the ORIGINAL SENDER's own tick from single to
     // double, on their screen.
     socket.on("markRead", async (roomId: string) => {
+        if (!markReadLimiter.check(identity.id)) {
+            console.warn(`[rate-limit] ${identity.type}:${identity.id} exceeded markRead limit`);
+            return;
+        }
+        
         try {
             const membership = await prisma.roomMember.findFirst({
                 where: {

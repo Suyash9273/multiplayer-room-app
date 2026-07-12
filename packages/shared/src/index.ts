@@ -2,17 +2,26 @@ export interface ChatMessage {
   id: string;
   roomId: string;
   message: string;
+  
+  // Replaces the old single `sender` string. 
   // senderId maps to either a User.id or GuestIdentity.id.
   senderId?: string; 
+  
+  // Replaces the need for complex lookups on the frontend.
   // Contains "Stranger", "System", or the actual User's name.
   senderDisplayName: string; 
   
   timestamp: number;
-  status: "pending" | "sent";
+  status: "pending" | "sent" | "failed";
   type?: "USER" | "SYSTEM";
 
   isRead?: boolean;   
   readAt?: number;    
+
+  // Set only when status is "failed" — why the server rejected it (rate
+  // limited, too long, not a member anymore, etc.) so the UI can show
+  // something more useful than a generic "failed to send".
+  error?: string;
 }
 
 export interface FriendAcceptedPayload {

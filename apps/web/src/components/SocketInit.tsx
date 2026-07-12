@@ -26,7 +26,7 @@ export function SocketInit() {
 
     if (user?.username && !isJoined && !hasAttempted.current) {
       hasAttempted.current = true
-      join({ username: user.username, userId: user.id })
+      join()
     }
 
     if (!user && isJoined) {

@@ -4,7 +4,7 @@ import type { ChatMessage } from "@multiplayer/shared"
 type ChatState = {
     messages: ChatMessage[];
     addMessage: (message: ChatMessage) => void;
-    updateMessageStatus: (id: string, status: "pending" | "sent") => void;
+    updateMessageStatus: (id: string, status: "pending" | "sent" | "failed", error?: string) => void;
     prependMessages: (messages: ChatMessage[]) => void;
     setMessagesFromHistory: (messages: ChatMessage[]) => void;
     clearMessages: () => void;
@@ -31,10 +31,10 @@ export const useChatStore = create<ChatState>((set) => ({
             }
             return { messages: [...state.messages, message] }
         }),
-    updateMessageStatus: (id, status) =>
+    updateMessageStatus: (id, status, error) =>
         set((state) => ({
             messages: state.messages.map((m) => (
-                m.id === id ? { ...m, status } : m
+                m.id === id ? { ...m, status, ...(error ? { error } : {}) } : m
             ))
         })),
     prependMessages: (incoming) =>

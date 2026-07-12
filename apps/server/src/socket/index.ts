@@ -6,6 +6,7 @@ import { removeUser, getOnlineUsers } from "./presence.js";
 import { registerRoomHandlers } from "./handlers/room.handlers.js";
 import { registerMatchmakingHandlers } from "./handlers/matchmaking.handlers.js";
 import type { AppSocketData } from "./types.js";
+import { sweepAllLimiters } from "../lib/limiters.js";
 // import { registerFriendHandlers } from "./handlers/friend.handlers.js";
 
 export const initializeSocket = (httpServer: HttpServer) => {
@@ -16,6 +17,14 @@ export const initializeSocket = (httpServer: HttpServer) => {
             credentials: true
         }
     });
+
+    // Rate limiter buckets are per-identity Maps that only ever get pruned
+    // lazily (on the next check() for that same identity). Without this,
+    // an identity that rate-limited once and never came back would leave
+    // its bucket sitting in memory forever. A minute is frequent enough to
+    // keep memory bounded without meaningfully impacting accuracy. Lives
+    // for the process lifetime, same as the in-memory presence maps.
+    setInterval(sweepAllLimiters, 60_000);
 
     // Socket Auth Middleware
     //

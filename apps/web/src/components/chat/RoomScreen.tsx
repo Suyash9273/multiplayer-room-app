@@ -285,13 +285,14 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
                 <span className="text-xs text-muted-foreground mb-1 px-1">
                   {msg.senderDisplayName}
                 </span>
-                <div className={`p-3 rounded-lg ${isMe ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                <div className={`p-3 rounded-lg ${isMe ? 'bg-primary text-primary-foreground' : 'bg-muted'} ${msg.status === "failed" ? "opacity-50" : ""}`}>
                   {msg.message}
                 </div>
                 <div>
                   {isMe && (
-                    <span className="text-[10px] text-muted-foreground ml-2">
-                      {msg.status === "pending" ? "..." :
+                    <span className={`text-[10px] ml-2 ${msg.status === "failed" ? "text-red-500" : "text-muted-foreground"}`}>
+                      {msg.status === "failed" ? `⚠ ${msg.error || "Failed to send"}` :
+                        msg.status === "pending" ? "..." :
                         isDMRoom && msg.isRead
                           ? "✓✓ Read"
                           : "✓ Sent"

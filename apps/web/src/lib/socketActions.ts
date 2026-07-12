@@ -81,10 +81,14 @@ export function sendMessage(payload: SendMessagePayload) {
   socket.emit(
     "sendMessage",
     { ...payload, id: clientGeneratedId },
-    // The backend now returns a rich receipt. We mark it as 'sent' once confirmed.
-    (receipt: { status: string; data?: ChatMessage }) => {
+    // Previously only the "success" branch was handled — a rejected send
+    // (rate limited, empty, too long, no longer a member) just left the
+    // optimistic message stuck on "pending" forever with zero explanation.
+    (receipt: { status: "success" | "error"; data?: ChatMessage; error?: string }) => {
       if (receipt.status === "success") {
          useChatStore.getState().updateMessageStatus(clientGeneratedId, "sent")
+      } else {
+         useChatStore.getState().updateMessageStatus(clientGeneratedId, "failed", receipt.error)
       }
     }
   )
