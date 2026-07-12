@@ -1,36 +1,37 @@
 import { prisma } from "@multiplayer/db";
 import type { AppServer, AppSocket } from "../types.js";
 import { getInterests } from "../../lib/interests.js";
-import { findPartnerIndex, type MatchCandidate } from "../../lib/matchmakingLogic.js";
+import { MatchQueue, type MatchCandidate } from "../../lib/matchmakingLogic.js";
 import { matchmakingLimiter } from "../../lib/limiters.js";
 
-// One waiting entry per searching socket. `fallbackActive` starts true for
-// anyone with no interests set (nothing to match on, so accept anyone
-// immediately — same as the old pure-FIFO behavior) and flips true for
-// everyone else once their chosen timer (5s/10s) elapses without an
-// interest-overlap match. "Forever" means `timer` is never set, so
-// fallbackActive can only ever become true if interests is empty.
-//
-// Satisfies MatchCandidate (identityId/interests/fallbackActive) so the
-// pure matching policy in matchmakingLogic.ts can operate on it directly
-// without needing to know anything about sockets.
+// One waiting entry per searching socket. `fallbackActive` starts true
+// for anyone with no interests set (nothing to match on, so accept
+// anyone immediately — same as the old pure-FIFO behavior) and flips
+// true for everyone else once their chosen timer (5s/10s) elapses
+// without an interest-overlap match. "Forever" means `timer` is never
+// set, so fallbackActive can only become true if interests is empty.
 interface QueueEntry extends MatchCandidate {
     socket: AppSocket;
     timer: ReturnType<typeof setTimeout> | null;
 }
 
-const waitingQueue: QueueEntry[] = [];
+const queue = new MatchQueue<QueueEntry>();
 
-function removeFromQueue(entry: QueueEntry) {
+// Authoritative "who is currently searching" registry — O(1) lookup by
+// socket, separate from the bucket indices above (which exist purely to
+// make findPartner fast, not to answer "is this socket already queued").
+const socketToEntry = new Map<AppSocket, QueueEntry>();
+
+// Removes an entry from EVERY structure it could be registered in — the
+// interest buckets, the fallback pool, and the socket registry — plus
+// clears its pending timer. This is what keeps the queue clean
+// incrementally (on every disconnect/cancel/match), which means we no
+// longer need a periodic full-queue sweep for stale entries the way the
+// old flat-array version did.
+function removeEntry(entry: QueueEntry) {
     if (entry.timer) clearTimeout(entry.timer);
-    const idx = waitingQueue.indexOf(entry);
-    if (idx !== -1) waitingQueue.splice(idx, 1);
-}
-
-// Liveness filter — the pure matching policy assumes everyone it's given
-// is actually still connected; this is where that assumption gets made true.
-function connectedQueue(): QueueEntry[] {
-    return waitingQueue.filter((e) => e.socket.connected);
+    queue.remove(entry);
+    socketToEntry.delete(entry.socket);
 }
 
 async function createMatchRoom(a: AppSocket, b: AppSocket) {
@@ -60,8 +61,8 @@ async function createMatchRoom(a: AppSocket, b: AppSocket) {
 }
 
 async function pairEntries(a: QueueEntry, b: QueueEntry) {
-    removeFromQueue(a);
-    removeFromQueue(b);
+    removeEntry(a);
+    removeEntry(b);
     await createMatchRoom(a.socket, b.socket);
 }
 
@@ -72,17 +73,12 @@ export const registerMatchmakingHandlers = (io: AppServer, socket: AppSocket) =>
     // non-interest match on its own; only pairs if someone else's
     // fallback happens to reach it, or an actual overlap shows up).
     socket.on("findMatch", async (payload?: { duration?: number | null }) => {
-        if (waitingQueue.some((e) => e.socket === socket)) return; // already searching
+        if (socketToEntry.has(socket)) return; // already searching
 
         if (!matchmakingLimiter.check(identity.id)) {
             console.warn(`[rate-limit] ${identity.type}:${identity.id} exceeded findMatch limit`);
             socket.emit("matchmakingError", "You're searching too frequently. Please wait a moment.");
             return;
-        }
-
-        // Opportunistic cleanup of any stale/disconnected entries.
-        for (let i = waitingQueue.length - 1; i >= 0; i--) {
-            if (!waitingQueue[i].socket.connected) removeFromQueue(waitingQueue[i]);
         }
 
         // Read FRESH from the DB — not whatever was true when this socket
@@ -104,25 +100,28 @@ export const registerMatchmakingHandlers = (io: AppServer, socket: AppSocket) =>
             timer: null,
         };
 
-        const partnerIdx = findPartnerIndex(entry, connectedQueue());
-        if (partnerIdx !== -1) {
-            await pairEntries(entry, connectedQueue()[partnerIdx]);
+        const partner = queue.findPartner(entry);
+        if (partner) {
+            await pairEntries(entry, partner);
             return;
         }
 
-        waitingQueue.push(entry);
+        queue.add(entry);
+        socketToEntry.set(socket, entry);
         socket.emit("waitingForMatch");
 
         if (!entry.fallbackActive && durationMs != null) {
             entry.timer = setTimeout(async () => {
-                entry.fallbackActive = true;
                 entry.timer = null;
+                entry.fallbackActive = true;
+                queue.activateFallback(entry);
 
-                // Someone might already be sitting in the queue we can grab
-                // right now, rather than waiting for the NEXT findMatch call.
-                const idx = findPartnerIndex(entry, connectedQueue());
-                if (idx !== -1) {
-                    await pairEntries(entry, connectedQueue()[idx]);
+                // Someone might already be sitting in the fallback pool we
+                // can grab right now, rather than waiting for the NEXT
+                // findMatch call.
+                const partner = queue.findPartner(entry);
+                if (partner) {
+                    await pairEntries(entry, partner);
                 } else {
                     socket.emit("fallbackActive");
                 }
@@ -132,12 +131,12 @@ export const registerMatchmakingHandlers = (io: AppServer, socket: AppSocket) =>
 
     socket.on("cancelFindMatch", () => {
         if (!matchmakingLimiter.check(identity.id)) return; // fail silent — cancel is low-stakes
-        const entry = waitingQueue.find((e) => e.socket === socket);
-        if (entry) removeFromQueue(entry);
+        const entry = socketToEntry.get(socket);
+        if (entry) removeEntry(entry);
     });
 
     socket.on("disconnect", () => {
-        const entry = waitingQueue.find((e) => e.socket === socket);
-        if (entry) removeFromQueue(entry);
+        const entry = socketToEntry.get(socket);
+        if (entry) removeEntry(entry);
     });
 };

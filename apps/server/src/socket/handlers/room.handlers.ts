@@ -5,7 +5,7 @@ import {
     addUser, getOnlineUsers, joinRoom, leaveRoom,
     getUsersInRoom, socketToIdentity, roomToSockets
 } from "../presence.js";
-import { messageLimiter, markReadLimiter, roomEntryLimiter } from "../../lib/limiters.js";
+import { messageLimiter, markReadLimiter, roomEntryLimiter, globalMessageLimiter, GLOBAL_KEY } from "../../lib/limiters.js";
 
 const MAX_MESSAGE_LENGTH = 2000;
 
@@ -176,6 +176,17 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
         ) => {
             const { roomId, message, type = "USER", id } = payload;
 
+            // Checked FIRST and separately from the per-identity limiter —
+            // this isn't "is this person spamming", it's "is TOTAL system
+            // load past a safe ceiling right now". A real spike here (bug,
+            // bot swarm, viral moment) means the DB is at risk regardless
+            // of any single sender's own behavior.
+            if (!globalMessageLimiter.check(GLOBAL_KEY)) {
+                console.warn(`[rate-limit] GLOBAL sendMessage ceiling hit`);
+                ack?.({ status: "error", error: "Server is busy right now. Please try again in a moment." });
+                return;
+            }
+
             if (!messageLimiter.check(identity.id)) {
                 console.warn(`[rate-limit] ${identity.type}:${identity.id} exceeded sendMessage limit`);
                 ack?.({ status: "error", error: "You're sending messages too fast. Please slow down." });
@@ -222,7 +233,7 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
                     data: {
                         ...(id ? { id } : {}),
                         roomId,
-                        message,
+                        message: trimmed,
                         senderId: identity.id,
                         senderDisplayName: identity.displayName,
                         type,
@@ -266,7 +277,7 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
             console.warn(`[rate-limit] ${identity.type}:${identity.id} exceeded markRead limit`);
             return;
         }
-        
+
         try {
             const membership = await prisma.roomMember.findFirst({
                 where: {
