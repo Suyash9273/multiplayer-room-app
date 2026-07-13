@@ -5,9 +5,18 @@ import {
     addUser, getOnlineUsers, joinRoom, leaveRoom,
     getUsersInRoom, socketToIdentity, roomToSockets
 } from "../presence.js";
-import { messageLimiter, markReadLimiter, roomEntryLimiter, globalMessageLimiter, GLOBAL_KEY } from "../../lib/limiters.js";
+import { messageLimiter, editDeleteLimiter, markReadLimiter, roomEntryLimiter, globalMessageLimiter, GLOBAL_KEY } from "../../lib/limiters.js";
 
 const MAX_MESSAGE_LENGTH = 2000;
+
+// Sender-only for now. Kept as a standalone check (rather than inlined at
+// each call site) so a future moderator bypass — e.g.
+// `message.senderId === identity.id || isModerator(identity, roomId)` —
+// is a one-line change here instead of touching editMessage AND
+// deleteMessage separately.
+function canModifyMessage(identity: { id: string }, message: { senderId: string | null }): boolean {
+    return message.senderId === identity.id;
+}
 
 // dmAuth.js is fully deprecated now — the database (RoomMember rows) is the
 // single source of truth for "who is allowed in this room", checked fresh
@@ -266,7 +275,122 @@ export const registerRoomHandlers = (io: AppServer, socket: AppSocket) => {
         }
     );
 
-    // 3b. READ RECEIPTS
+    // 3a. EDIT MESSAGE
+    // Sender-only (see canModifyMessage). Soft-delete's counterpart for
+    // mutation: rewrites `message` in place and stamps `editedAt`, then
+    // broadcasts a distinct "messageEdited" event — NOT another
+    // "receiveMessage" — so clients know to find-and-update the existing
+    // bubble rather than append a new one.
+    socket.on(
+        "editMessage",
+        async (
+            payload: { messageId: string; roomId: string; message: string },
+            ack?: (receipt: { status: "success" | "error"; error?: string }) => void
+        ) => {
+            const { messageId, roomId, message } = payload;
+
+            if (!editDeleteLimiter.check(identity.id)) {
+                console.warn(`[rate-limit] ${identity.type}:${identity.id} exceeded edit/delete limit`);
+                ack?.({ status: "error", error: "Too many edits. Please slow down." });
+                return;
+            }
+
+            const trimmed = message?.trim();
+            if (!trimmed) {
+                ack?.({ status: "error", error: "Message cannot be empty." });
+                return;
+            }
+            if (trimmed.length > MAX_MESSAGE_LENGTH) {
+                ack?.({ status: "error", error: `Message is too long (max ${MAX_MESSAGE_LENGTH} characters).` });
+                return;
+            }
+
+            try {
+                const existing = await prisma.message.findUnique({ where: { id: messageId } });
+
+                if (!existing || existing.roomId !== roomId || existing.deletedAt) {
+                    ack?.({ status: "error", error: "Message not found." });
+                    return;
+                }
+                if (!canModifyMessage(identity, existing)) {
+                    console.warn(`[SECURITY] ${identity.type}:${identity.id} tried to edit a message they don't own`);
+                    ack?.({ status: "error", error: "You can only edit your own messages." });
+                    return;
+                }
+
+                const editedAt = new Date();
+                await prisma.message.update({
+                    where: { id: messageId },
+                    data: { message: trimmed, editedAt },
+                });
+
+                io.to(roomId).emit("messageEdited", {
+                    id: messageId,
+                    roomId,
+                    message: trimmed,
+                    editedAt: editedAt.getTime(),
+                });
+                ack?.({ status: "success" });
+            } catch (error) {
+                console.error("[editMessage] Error:", error);
+                ack?.({ status: "error", error: "Internal Server Error" });
+            }
+        }
+    );
+
+    // 3b. DELETE MESSAGE (soft delete)
+    // Sender-only (see canModifyMessage). The row and its original text
+    // stay in the DB — only `deletedAt` gets set. The broadcast carries
+    // NO message content at all; clients render their own "message
+    // deleted" tombstone based on deletedAt being present, so there's no
+    // path where deleted content leaks through a live event.
+    socket.on(
+        "deleteMessage",
+        async (
+            payload: { messageId: string; roomId: string },
+            ack?: (receipt: { status: "success" | "error"; error?: string }) => void
+        ) => {
+            const { messageId, roomId } = payload;
+
+            if (!editDeleteLimiter.check(identity.id)) {
+                console.warn(`[rate-limit] ${identity.type}:${identity.id} exceeded edit/delete limit`);
+                ack?.({ status: "error", error: "Too many actions. Please slow down." });
+                return;
+            }
+
+            try {
+                const existing = await prisma.message.findUnique({ where: { id: messageId } });
+
+                if (!existing || existing.roomId !== roomId || existing.deletedAt) {
+                    ack?.({ status: "error", error: "Message not found." });
+                    return;
+                }
+                if (!canModifyMessage(identity, existing)) {
+                    console.warn(`[SECURITY] ${identity.type}:${identity.id} tried to delete a message they don't own`);
+                    ack?.({ status: "error", error: "You can only delete your own messages." });
+                    return;
+                }
+
+                const deletedAt = new Date();
+                await prisma.message.update({
+                    where: { id: messageId },
+                    data: { deletedAt },
+                });
+
+                io.to(roomId).emit("messageDeleted", {
+                    id: messageId,
+                    roomId,
+                    deletedAt: deletedAt.getTime(),
+                });
+                ack?.({ status: "success" });
+            } catch (error) {
+                console.error("[deleteMessage] Error:", error);
+                ack?.({ status: "error", error: "Internal Server Error" });
+            }
+        }
+    );
+
+    // 3c. READ RECEIPTS
     // Client calls this whenever it's actively looking at a room (on entry,
     // and again whenever new messages arrive while still open). We mark
     // every message NOT sent by the reader as read, and tell the room —

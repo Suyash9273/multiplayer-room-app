@@ -106,6 +106,16 @@ model Message {
 
   isRead            Boolean   @default(false)
   readAt            DateTime?
+
+  // NEW: edit/delete support. deletedAt is a SOFT delete — the row (and
+  // its original text) stays in the DB, but every read path must treat
+  // a deleted message as "don't show the real content" and render a
+  // tombstone instead. Original text is deliberately kept rather than
+  // wiped, matching how Slack/Discord-style soft delete works: retained
+  // per whatever data-retention policy you'd want later, not shown to
+  // users. Wipe it for real in the DB if you ever want a harder guarantee.
+  editedAt          DateTime?
+  deletedAt         DateTime?
 }
 
 // --- BETTER AUTH CORE TABLES ---

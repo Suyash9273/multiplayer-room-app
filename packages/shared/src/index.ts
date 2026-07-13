@@ -22,6 +22,15 @@ export interface ChatMessage {
   // limited, too long, not a member anymore, etc.) so the UI can show
   // something more useful than a generic "failed to send".
   error?: string;
+
+  // NEW: edit/delete. `message` is NEVER the real original text once
+  // deletedAt is set — the server blanks it before this ever reaches the
+  // client, specifically so a deleted message's content can't leak
+  // through the history API or a live broadcast. The client renders its
+  // own tombstone text based on deletedAt being present, rather than
+  // trusting whatever's in `message` for a deleted row.
+  editedAt?: number;
+  deletedAt?: number;
 }
 
 export interface FriendAcceptedPayload {

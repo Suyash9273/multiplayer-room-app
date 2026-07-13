@@ -94,6 +94,42 @@ export function sendMessage(payload: SendMessagePayload) {
   )
 }
 
+// EDIT / DELETE
+// Unlike sendMessage, these don't apply an optimistic local update —
+// they wait for the "messageEdited"/"messageDeleted" broadcast (which
+// reaches the actor's own client too, same as every other broadcast in
+// this app) to actually change what's rendered. The ack here exists
+// purely to surface a rejection (not yours, rate limited, too long)
+// since there's no optimistic state to roll back if it fails.
+export function editMessage(
+  roomId: string,
+  messageId: string,
+  message: string,
+  onError?: (error: string) => void
+) {
+  socket.emit(
+    "editMessage",
+    { roomId, messageId, message },
+    (receipt: { status: "success" | "error"; error?: string }) => {
+      if (receipt.status === "error") onError?.(receipt.error || "Failed to edit message.")
+    }
+  )
+}
+
+export function deleteMessage(
+  roomId: string,
+  messageId: string,
+  onError?: (error: string) => void
+) {
+  socket.emit(
+    "deleteMessage",
+    { roomId, messageId },
+    (receipt: { status: "success" | "error"; error?: string }) => {
+      if (receipt.status === "error") onError?.(receipt.error || "Failed to delete message.")
+    }
+  )
+}
+
 // MATCHMAKING
 // duration: 5000 | 10000 | null ("forever" — only ever pairs on a shared
 // interest, never falls back to a random stranger on its own).

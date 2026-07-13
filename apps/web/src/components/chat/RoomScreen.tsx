@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { ScrollArea } from "@/components/ui/scroll-area" 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Send, LogOut } from "lucide-react"
+import { Send, LogOut, Pencil, Trash2, Check, X } from "lucide-react"
 
 import { useSessionStore } from "@/store/sessionStore"
 import { usePresenceStore } from "@/store/presenceStore"
@@ -19,7 +19,9 @@ import {
   emitTyping,
   emitStopTyping,
   enterRoom,
-  markRead
+  markRead,
+  editMessage,
+  deleteMessage
 } from "@/lib/socketActions"
 import { BACKEND_URL } from "@/lib/socket"
 
@@ -34,6 +36,9 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
   const typingUsers = useTypingStore((s) => s.typingUsers)
 
   const [messageInput, setMessageInput] = useState("")
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState("")
+  const [editError, setEditError] = useState("")
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -116,7 +121,9 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
         status: "sent",
         type: dbMsg.type,
         isRead: dbMsg.isRead,
-        readAt: dbMsg.readAt ? new Date(dbMsg.readAt).getTime() : undefined
+        readAt: dbMsg.readAt ? new Date(dbMsg.readAt).getTime() : undefined,
+        editedAt: dbMsg.editedAt ? new Date(dbMsg.editedAt).getTime() : undefined,
+        deletedAt: dbMsg.deletedAt ? new Date(dbMsg.deletedAt).getTime() : undefined,
       }));
 
       if (!cursor) {
@@ -183,6 +190,34 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
     emitStopTyping()
     setMessageInput("")
+  }
+
+  const handleStartEdit = (messageId: string, currentText: string) => {
+    setEditingId(messageId)
+    setEditDraft(currentText)
+    setEditError("")
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setEditDraft("")
+    setEditError("")
+  }
+
+  const handleSaveEdit = (messageId: string) => {
+    const trimmed = editDraft.trim()
+    if (!trimmed) return
+    editMessage(roomId, messageId, trimmed, (error) => setEditError(error))
+    // Not optimistic — the bubble updates when "messageEdited" comes back
+    // (same round trip either way, and avoids a rollback dance on error).
+    // Just close the editor; if it failed, the text simply won't change
+    // and editError is available if you want to surface it elsewhere.
+    setEditingId(null)
+    setEditDraft("")
+  }
+
+  const handleDeleteMessage = (messageId: string) => {
+    deleteMessage(roomId, messageId, (error) => console.error("Delete failed:", error))
   }
 
   const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -277,26 +312,98 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
                 ? msg.senderId === currentUserId 
                 : msg.senderDisplayName === username;
 
+            // Deleted messages are a TOMBSTONE, not removed from the list —
+            // the gap in conversation flow is meaningful. `msg.message` is
+            // never trusted here even though the server already blanks it;
+            // rendering is keyed entirely off `deletedAt` being present.
+            if (msg.deletedAt) {
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex flex-col max-w-[75%] ${isMe ? 'self-end items-end' : 'self-start items-start'}`}
+                >
+                  <span className="text-xs text-muted-foreground mb-1 px-1">
+                    {msg.senderDisplayName}
+                  </span>
+                  <div className="p-3 rounded-lg bg-muted/50 italic text-sm text-muted-foreground">
+                    This message was deleted.
+                  </div>
+                </div>
+              );
+            }
+
+            const isEditing = editingId === msg.id;
+            // Editing/deleting only makes sense for a message that's actually
+            // saved — a "pending" optimistic bubble hasn't gotten an id the
+            // server recognizes yet, and a "failed" one was never persisted.
+            const canModify = isMe && msg.status === "sent";
+
             return (
               <div
                 key={msg.id}
-                className={`flex flex-col max-w-[75%] ${isMe ? 'self-end items-end' : 'self-start items-start'}`}
+                className={`flex flex-col max-w-[75%] group ${isMe ? 'self-end items-end' : 'self-start items-start'}`}
               >
                 <span className="text-xs text-muted-foreground mb-1 px-1">
                   {msg.senderDisplayName}
                 </span>
-                <div className={`p-3 rounded-lg ${isMe ? 'bg-primary text-primary-foreground' : 'bg-muted'} ${msg.status === "failed" ? "opacity-50" : ""}`}>
-                  {msg.message}
-                </div>
+
+                {isEditing ? (
+                  <div className="flex items-center gap-1.5 w-full min-w-[200px]">
+                    <Input
+                      autoFocus
+                      value={editDraft}
+                      onChange={(e) => setEditDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveEdit(msg.id);
+                        if (e.key === "Escape") handleCancelEdit();
+                      }}
+                      className="text-sm"
+                    />
+                    <Button size="icon" variant="ghost" className="shrink-0" onClick={() => handleSaveEdit(msg.id)} aria-label="Save edit">
+                      <Check className="h-4 w-4" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="shrink-0" onClick={handleCancelEdit} aria-label="Cancel edit">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-end gap-1.5">
+                    {canModify && (
+                      <div className="hidden group-hover:flex items-center gap-0.5 order-first">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                          onClick={() => handleStartEdit(msg.id, msg.message)}
+                          aria-label="Edit message"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 text-muted-foreground hover:text-red-500"
+                          onClick={() => handleDeleteMessage(msg.id)}
+                          aria-label="Delete message"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <div className={`p-3 rounded-lg ${isMe ? 'bg-primary text-primary-foreground' : 'bg-muted'} ${msg.status === "failed" ? "opacity-50" : ""}`}>
+                      {msg.message}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   {isMe && (
                     <span className={`text-[10px] ml-2 ${msg.status === "failed" ? "text-red-500" : "text-muted-foreground"}`}>
                       {msg.status === "failed" ? `⚠ ${msg.error || "Failed to send"}` :
                         msg.status === "pending" ? "..." :
-                        isDMRoom && msg.isRead
-                          ? "✓✓ Read"
-                          : "✓ Sent"
+                        (isDMRoom && msg.isRead ? "✓✓ Read" : "✓ Sent")
                       }
+                      {msg.editedAt && msg.status !== "failed" ? " · edited" : ""}
                     </span>
                   )}
                 </div>
@@ -313,6 +420,12 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
             {handleTypingUsers()}
           </span>
         </div>
+
+        {editError && (
+          <div className="px-6 pb-1">
+            <p className="text-xs text-red-500 font-medium max-w-4xl mx-auto">{editError}</p>
+          </div>
+        )}
 
         {/* INPUT FORM */}
         <div className="p-4 border-t bg-background shrink-0">

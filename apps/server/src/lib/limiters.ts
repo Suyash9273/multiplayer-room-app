@@ -4,6 +4,7 @@ import { RateLimiter } from "./rateLimiter.js";
 // buried inline in each handler file. Keyed by identity.id everywhere
 // they're used (see rateLimiter.ts for why).
 export const messageLimiter = new RateLimiter(10, 10_000);       // 10 messages / 10s PER IDENTITY
+export const editDeleteLimiter = new RateLimiter(15, 10_000);    // 15 edit/delete actions / 10s (separate from the send budget — editing shouldn't eat into it)
 export const markReadLimiter = new RateLimiter(20, 10_000);      // 20 markRead calls / 10s (fires on every message while a room is open, needs headroom)
 export const roomEntryLimiter = new RateLimiter(15, 10_000);     // 15 enterRoom/leaveRoom calls / 10s
 export const matchmakingLimiter = new RateLimiter(8, 10_000);    // 8 findMatch/cancelFindMatch calls / 10s

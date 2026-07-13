@@ -37,7 +37,16 @@ router.get("/:roomId/messages", requireIdentity, async (req: Request, res: Respo
         const nextCursor = messages.length === 10 ? messages[messages.length - 1].id : null;
         const chronologicallyOrdered = messages.reverse();
 
-        return res.json({ messages: chronologicallyOrdered, nextCursor });
+        // Never let a soft-deleted message's original text leave the
+        // server — same guarantee the live "messageDeleted" broadcast
+        // gives, applied here so scrolling back through history can't
+        // reveal it either. The client renders its own tombstone based
+        // on `deletedAt` being present.
+        const sanitized = chronologicallyOrdered.map((msg) =>
+            msg.deletedAt ? { ...msg, message: "" } : msg
+        );
+
+        return res.json({ messages: sanitized, nextCursor });
     } catch (error) {
         console.error("Failed to fetch paginated messages:", error);
         return res.status(500).json({ error: "Internal Server Error" });

@@ -9,6 +9,8 @@ type ChatState = {
     setMessagesFromHistory: (messages: ChatMessage[]) => void;
     clearMessages: () => void;
     markRoomMessagesAsRead: (roomId: string, readAt: number) => void;
+    editMessageLocally: (id: string, message: string, editedAt: number) => void;
+    deleteMessageLocally: (id: string, deletedAt: number) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -49,5 +51,28 @@ export const useChatStore = create<ChatState>((set) => ({
                 ? { ...msg, isRead: true, readAt }
                 : msg
         )
-    }))
+    })),
+
+    // Applied when the "messageEdited" broadcast arrives — including for
+    // the editor's own client, same pattern as everything else in this
+    // store (the server is always the source of truth, nothing here is
+    // optimistic).
+    editMessageLocally: (id, message, editedAt) =>
+        set((state) => ({
+            messages: state.messages.map((m) =>
+                m.id === id ? { ...m, message, editedAt } : m
+            )
+        })),
+
+    // Deliberately does NOT remove the message from the array — a
+    // deleted message stays in place as a tombstone (matches real chat
+    // apps: the gap in conversation flow is meaningful context, not
+    // noise to collapse away). RoomScreen renders based on `deletedAt`
+    // being set, never on the (now-blanked) `message` field.
+    deleteMessageLocally: (id, deletedAt) =>
+        set((state) => ({
+            messages: state.messages.map((m) =>
+                m.id === id ? { ...m, deletedAt } : m
+            )
+        })),
 }))
