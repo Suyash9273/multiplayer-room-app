@@ -29,8 +29,15 @@ export function SocketInit() {
       join()
     }
 
-    if (!user && isJoined) {
-      // session expired/logged out elsewhere — tear down local state
+    // Only tear down if we WERE a real authenticated user and the Better
+    // Auth session has genuinely disappeared (signed out elsewhere,
+    // expired). Guests never have a Better Auth session at all — `!user`
+    // is completely normal and expected for them, not a signal anything
+    // went wrong. Without the identityType check, this fired for every
+    // guest on any session revalidation (e.g. tab refocus), wiping their
+    // identity and bouncing them to the sign-in screen for no reason.
+    const identityType = useSessionStore.getState().identityType
+    if (!user && identityType === "user" && isJoined) {
       socket.disconnect()
       useSessionStore.getState().reset()
       hasAttempted.current = false
