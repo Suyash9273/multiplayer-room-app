@@ -30,8 +30,6 @@ export default function LoginScreen() {
   const [guestError, setGuestError] = useState("")
 
   const handleGoogleLogin = async () => {
-    console.log("better-auth-url: ", process.env.BETTER_AUTH_URL)
-    console.log("better-auth-secret: ", process.env.BETTER_AUTH_SECRET)
     await signIn.social({ provider: "google", callbackURL: "/" })
   }
 
