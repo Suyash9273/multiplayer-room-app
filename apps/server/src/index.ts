@@ -1,9 +1,11 @@
+import "./env.js"; // MUST be the first import — loads env vars before anything else reads them
+
 import http from "http";
 import app from "./app.js";
 import { initializeSocket } from "./socket/index.js";
 import { cleanupExpiredGuests } from "./lib/cleanupExpiredGuests.js";
 
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 // 1. Create a raw HTTP server using the Express app
 const httpServer = http.createServer(app);

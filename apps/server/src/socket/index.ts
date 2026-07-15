@@ -12,7 +12,7 @@ import { sweepAllLimiters } from "../lib/limiters.js";
 export const initializeSocket = (httpServer: HttpServer) => {
     const io = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, AppSocketData>(httpServer, {
         cors: {
-            origin: "http://localhost:3000",
+            origin: process.env.FRONTEND_URL || "http://localhost:3000",
             methods: ["GET", "POST"],
             credentials: true
         }

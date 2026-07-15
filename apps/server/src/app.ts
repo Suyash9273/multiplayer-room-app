@@ -4,8 +4,12 @@ import apiRoutes from "./routes/index.js";
 
 const app = express();
 
+// FRONTEND_URL must be set in production (e.g. your deployed Vercel/Netlify
+// URL) — falls back to localhost only for local dev.
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+
 app.use(cors({
-    origin: "http://localhost:3000",
+    origin: FRONTEND_URL,
     credentials: true,
 }));
 

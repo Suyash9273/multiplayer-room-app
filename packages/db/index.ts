@@ -1,11 +1,5 @@
-import dotenv from "dotenv";
-import path from "path";
 import pg from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
-
-dotenv.config({
-  path: path.resolve(process.cwd(), "../../packages/db/.env"),
-});
 
 // FIX 1: Import from the standard Prisma client package
 import { PrismaClient } from "@prisma/client";

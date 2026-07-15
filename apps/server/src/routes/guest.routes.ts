@@ -22,7 +22,13 @@ router.post("/", async (req: Request, res: Response) => {
 
         res.cookie(GUEST_COOKIE_NAME, token, {
             httpOnly: true,
-            sameSite: "lax",
+            // "lax" only allows the cookie on top-level navigation across
+            // sites — it silently blocks it on cross-site fetch/XHR calls,
+            // which is exactly what happens once the frontend and backend
+            // are deployed on two different domains (e.g. Vercel + Railway).
+            // "none" is required for genuine cross-origin credentialed
+            // requests, and browsers mandate `secure: true` alongside it.
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
             secure: process.env.NODE_ENV === "production",
             maxAge: GUEST_COOKIE_MAX_AGE_SECONDS * 1000,
             path: "/",
