@@ -92,7 +92,7 @@ export default function LoginScreen() {
       <div className="flex flex-col h-screen items-center justify-center bg-background">
         <Card className="w-[350px]">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">ChitChat</CardTitle>
+            <CardTitle className="text-2xl">Baat-Chit</CardTitle>
             <CardDescription>Secure multiplayer communication</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
