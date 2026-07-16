@@ -7,12 +7,13 @@ import { registerRoomHandlers } from "./handlers/room.handlers.js";
 import { registerMatchmakingHandlers } from "./handlers/matchmaking.handlers.js";
 import type { AppSocketData } from "./types.js";
 import { sweepAllLimiters } from "../lib/limiters.js";
+import { corsOriginCheck } from "../lib/corsOrigins.js";
 // import { registerFriendHandlers } from "./handlers/friend.handlers.js";
 
 export const initializeSocket = (httpServer: HttpServer) => {
     const io = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, AppSocketData>(httpServer, {
         cors: {
-            origin: process.env.FRONTEND_URL || "http://localhost:3000",
+            origin: corsOriginCheck,
             methods: ["GET", "POST"],
             credentials: true
         }
@@ -42,7 +43,18 @@ export const initializeSocket = (httpServer: HttpServer) => {
             // authenticates when the frontend and this server are on
             // different domains and the session cookie can't reach us.
             const bearerToken = socket.handshake.auth?.token as string | undefined;
+
+            // TEMP DEBUG — remove once cross-domain login is confirmed working.
+            console.log("[socket auth]", {
+                hasCookies: !!rawCookies,
+                hasBearerToken: !!bearerToken,
+                bearerTokenPreview: bearerToken ? `${bearerToken.slice(0, 8)}...` : null,
+            });
+
             const identity = await resolveIdentity(rawCookies, bearerToken);
+
+            // TEMP DEBUG — remove once cross-domain login is confirmed working.
+            console.log("[socket auth] resolveIdentity result:", identity);
 
             if (!identity) {
                 return next(new Error("Authentication error: No valid session or guest token."));
