@@ -7,13 +7,12 @@ import { registerRoomHandlers } from "./handlers/room.handlers.js";
 import { registerMatchmakingHandlers } from "./handlers/matchmaking.handlers.js";
 import type { AppSocketData } from "./types.js";
 import { sweepAllLimiters } from "../lib/limiters.js";
-import { corsOriginCheck } from "../lib/corsOrigins.js";
 // import { registerFriendHandlers } from "./handlers/friend.handlers.js";
 
 export const initializeSocket = (httpServer: HttpServer) => {
     const io = new Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, AppSocketData>(httpServer, {
         cors: {
-            origin: corsOriginCheck,
+            origin: process.env.FRONTEND_URL || "http://localhost:3000",
             methods: ["GET", "POST"],
             credentials: true
         }
