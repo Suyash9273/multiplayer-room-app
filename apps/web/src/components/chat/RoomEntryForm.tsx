@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { BACKEND_URL } from "@/lib/socket"
+import { apiFetch } from "@/lib/apiFetch"
 
 // Joining a room by typing its id only makes sense for a room you're
 // ALREADY a member of, or an ANONYMOUS room someone shared the id of with
@@ -29,7 +30,7 @@ const RoomEntryForm = () => {
     setError("");
 
     try {
-      const res = await fetch(`${BACKEND_URL}/api/rooms/anonymous/${trimmed}/join`, {
+      const res = await apiFetch(`${BACKEND_URL}/api/rooms/anonymous/${trimmed}/join`, {
         method: "POST",
         credentials: "include",
       });

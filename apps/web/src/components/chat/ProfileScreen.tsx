@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 
 import { useSessionStore } from "@/store/sessionStore"
 import { BACKEND_URL } from "@/lib/socket"
+import { apiFetch } from "@/lib/apiFetch"
 import { logout } from "@/lib/logout"
 
 const MAX_INTERESTS = 10
@@ -41,7 +42,7 @@ export default function ProfileScreen() {
     useEffect(() => {
         const loadInterests = async () => {
             try {
-                const res = await fetch(`${BACKEND_URL}/api/profile/interests`, { credentials: "include" })
+                const res = await apiFetch(`${BACKEND_URL}/api/profile/interests`, { credentials: "include" })
                 if (res.ok) {
                     const data = await res.json()
                     setInterests(data.interests ?? [])
@@ -78,7 +79,7 @@ export default function ProfileScreen() {
         setIsSaving(true)
         setStatusMsg("")
         try {
-            const res = await fetch(`${BACKEND_URL}/api/profile/interests`, {
+            const res = await apiFetch(`${BACKEND_URL}/api/profile/interests`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",

@@ -1,6 +1,7 @@
 "use client"
 
 import { BACKEND_URL } from "@/lib/socket"
+import { apiFetch } from "@/lib/apiFetch"
 import { useFriendStore } from "@/store/friendStore"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -15,7 +16,7 @@ export function PendingRequestsPanel() {
 
     const handleAccept = async (friendshipId: string) => {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/friends/accept`, {
+            const res = await apiFetch(`${BACKEND_URL}/api/friends/accept`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
@@ -37,7 +38,7 @@ export function PendingRequestsPanel() {
 
     const handleDecline = async (friendshipId: string) => {
         try {
-            const res = await fetch(`${BACKEND_URL}/api/friends/decline`, {
+            const res = await apiFetch(`${BACKEND_URL}/api/friends/decline`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",

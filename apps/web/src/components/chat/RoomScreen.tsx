@@ -24,6 +24,7 @@ import {
   deleteMessage
 } from "@/lib/socketActions"
 import { BACKEND_URL } from "@/lib/socket"
+import { apiFetch } from "@/lib/apiFetch"
 
 
 export default function RoomScreen({ roomId }: { roomId: string }) { 
@@ -102,7 +103,7 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
       let url = `${BACKEND_URL}/api/rooms/${roomId}/messages`;
       if (cursor) url += `?cursor=${cursor}`;
 
-      const res = await fetch(url, { credentials: "include" });
+      const res = await apiFetch(url);
       if (!res.ok) throw new Error("Failed to fetch history");
 
       const data = await res.json();

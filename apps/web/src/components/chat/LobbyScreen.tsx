@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useSessionStore } from "@/store/sessionStore"
 import { useFriendStore } from "@/store/friendStore"
 import { BACKEND_URL } from "@/lib/socket"
+import { apiFetch } from "@/lib/apiFetch"
 
 import LobbyHeader from "./LobbyHeader"
 import RoomEntryForm from "./RoomEntryForm"
@@ -35,8 +36,8 @@ export default function LobbyScreen() {
         const hydrateFriendData = async () => {
             try {
                 const [pendingRes, friendsRes] = await Promise.all([
-                    fetch(`${BACKEND_URL}/api/friends/pending`, { credentials: "include" }),
-                    fetch(`${BACKEND_URL}/api/friends/list`, { credentials: "include" })
+                    apiFetch(`${BACKEND_URL}/api/friends/pending`),
+                    apiFetch(`${BACKEND_URL}/api/friends/list`)
                 ]);
 
                 if (pendingRes.ok) {

@@ -6,6 +6,7 @@ import { useSessionStore } from "@/store/sessionStore"
 import { Button } from "@/components/ui/button"
 import { MessageSquare, Loader2, UserMinus } from "lucide-react"
 import { BACKEND_URL } from "@/lib/socket"
+import { apiFetch } from "@/lib/apiFetch"
 
 import { useFriendStore } from "@/store/friendStore"
 import { usePresenceStore } from "@/store/presenceStore"
@@ -38,7 +39,7 @@ export function FriendList() {
         if (removingId) return;
         setRemovingId(friendshipId);
         try {
-            const res = await fetch(`${BACKEND_URL}/api/friends/remove`, {
+            const res = await apiFetch(`${BACKEND_URL}/api/friends/remove`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
@@ -64,7 +65,7 @@ export function FriendList() {
 
         try {
             // 1. Ask the Express Backend to Get or Create the relational Room
-            const response = await fetch(`${BACKEND_URL}/api/rooms/dm`, {
+            const response = await apiFetch(`${BACKEND_URL}/api/rooms/dm`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",

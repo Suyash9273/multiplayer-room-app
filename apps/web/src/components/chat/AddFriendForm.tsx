@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { BACKEND_URL } from "@/lib/socket"
+import { apiFetch } from "@/lib/apiFetch"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -19,7 +20,7 @@ export function AddFriendForm() {
 
         setStatusMsg("Sending...")
         try {
-            const res = await fetch(`${BACKEND_URL}/api/friends/request`, {
+            const res = await apiFetch(`${BACKEND_URL}/api/friends/request`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",

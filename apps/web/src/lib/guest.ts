@@ -1,4 +1,5 @@
 import { BACKEND_URL } from "@/lib/socket"
+import { apiFetch } from "@/lib/apiFetch"
 import type { GuestMintResponse } from "@multiplayer/shared"
 
 // Calls POST /api/guest. The server sets the httpOnly guest cookie itself —
@@ -7,8 +8,7 @@ import type { GuestMintResponse } from "@multiplayer/shared"
 // Safe to call repeatedly: if the browser already holds a valid guest (or
 // user) cookie, the server just returns that existing identity.
 export async function mintGuestIdentity(): Promise<GuestMintResponse> {
-    console.log(`${BACKEND_URL}`)
-    const res = await fetch(`${BACKEND_URL}/api/guest`, {
+    const res = await apiFetch(`${BACKEND_URL}/api/guest`, {
         method: "POST",
         credentials: "include",
     })

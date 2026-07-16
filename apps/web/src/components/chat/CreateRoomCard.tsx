@@ -6,6 +6,7 @@ import { Check, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { BACKEND_URL } from "@/lib/socket"
+import { apiFetch } from "@/lib/apiFetch"
 
 // This used to be AnonymousRoomStarter — it created a room and silently
 // navigated you into it, alone, with no way for anyone else to ever join
@@ -24,7 +25,7 @@ export default function CreateRoomCard() {
         setIsCreating(true)
         setError("")
         try {
-            const res = await fetch(`${BACKEND_URL}/api/rooms/anonymous`, {
+            const res = await apiFetch(`${BACKEND_URL}/api/rooms/anonymous`, {
                 method: "POST",
                 credentials: "include",
             })

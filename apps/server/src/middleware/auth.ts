@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import cookie from "cookie";
 import { prisma, User } from "@multiplayer/db";
 import type { Identity } from "@multiplayer/shared";
-import { resolveIdentity } from "../lib/identity.js";
+import { resolveIdentity, extractBearerToken } from "../lib/identity.js";
 
 // Extend Express Request to include your user
 declare global {
@@ -19,19 +19,27 @@ declare global {
 
 export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const rawCookies = req.headers.cookie;
-        if (!rawCookies) {
-            return res.status(401).json({ error: "Unauthorized: No cookies" });
-        }
-        
-        const parsedCookies = cookie.parse(rawCookies);
-        const fullCookieValue = parsedCookies["better-auth.session_token"];
+        // Bearer token first — this is how a logged-in user authenticates
+        // when the frontend (Vercel) and this server (Railway) are on
+        // different domains, since the Better Auth session cookie is
+        // scoped to the Vercel domain and never reaches this server.
+        const bearerToken = extractBearerToken(req.headers.authorization);
 
-        if (!fullCookieValue) {
+        let sessionToken: string | undefined = bearerToken;
+        if (!sessionToken) {
+            const rawCookies = req.headers.cookie;
+            if (!rawCookies) {
+                return res.status(401).json({ error: "Unauthorized: No cookies" });
+            }
+            const parsedCookies = cookie.parse(rawCookies);
+            sessionToken = parsedCookies["better-auth.session_token"]?.split(".")[0];
+        } else {
+            sessionToken = sessionToken.split(".")[0];
+        }
+
+        if (!sessionToken) {
             return res.status(401).json({ error: "Unauthorized: Token missing" });
         }
-
-        const sessionToken = fullCookieValue.split(".")[0];
 
         const session = await prisma.session.findUnique({
             where: { token: sessionToken },
@@ -59,7 +67,8 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
  */
 export const requireIdentity = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const identity = await resolveIdentity(req.headers.cookie);
+        const bearerToken = extractBearerToken(req.headers.authorization);
+        const identity = await resolveIdentity(req.headers.cookie, bearerToken);
         if (!identity) {
             return res.status(401).json({ error: "Unauthorized: No valid session or guest token" });
         }

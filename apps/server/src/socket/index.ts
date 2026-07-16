@@ -37,7 +37,12 @@ export const initializeSocket = (httpServer: HttpServer) => {
     io.use(async (socket, next) => {
         try {
             const rawCookies = socket.request.headers.cookie;
-            const identity = await resolveIdentity(rawCookies);
+            // Sent explicitly by the client via `io(url, { auth: { token } })`
+            // — see apps/web/src/lib/socket.ts. This is how a logged-in user
+            // authenticates when the frontend and this server are on
+            // different domains and the session cookie can't reach us.
+            const bearerToken = socket.handshake.auth?.token as string | undefined;
+            const identity = await resolveIdentity(rawCookies, bearerToken);
 
             if (!identity) {
                 return next(new Error("Authentication error: No valid session or guest token."));
