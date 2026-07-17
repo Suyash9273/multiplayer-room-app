@@ -64,11 +64,6 @@ export async function resolveIdentity(
     // across the Vercel/Railway domain split.
     if (bearerToken) {
         const session = await findUserSessionByToken(bearerToken);
-        // TEMP DEBUG — remove once cross-domain login is confirmed working.
-        console.log("[resolveIdentity] bearer lookup:", {
-            normalizedPreview: normalizeSessionToken(bearerToken).slice(0, 8) + "...",
-            found: !!session,
-        });
         if (session) {
             return {
                 type: "user",

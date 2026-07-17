@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useSession, signIn, authClient } from "@/lib/auth-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { join } from "@/lib/socketActions"
 import { mintGuestIdentity } from "@/lib/guest"
 import { logout } from "@/lib/logout"
+import { syncBearerToken } from "@/lib/authToken"
 
 type ExtendedUser = {
   id: string;
@@ -28,6 +29,19 @@ export default function LoginScreen() {
   const [errorMsg, setErrorMsg] = useState("")
   const [isMintingGuest, setIsMintingGuest] = useState(false)
   const [guestError, setGuestError] = useState("")
+
+  // The Better Auth session cookie is scoped to this (Vercel) domain and
+  // can never reach the Railway server, so we separately fetch the raw
+  // session token via our own same-origin route and store it — that's what
+  // socket.ts and apiFetch.ts send to the backend instead of relying on
+  // the cookie crossing domains. Runs as soon as we know who the user is,
+  // which covers both the fresh mount right after the OAuth redirect back
+  // from Google, and any later remount with an existing session.
+  useEffect(() => {
+    if (user?.id) {
+      syncBearerToken()
+    }
+  }, [user?.id])
 
   const handleGoogleLogin = async () => {
     await signIn.social({ provider: "google", callbackURL: "/" })
@@ -92,7 +106,7 @@ export default function LoginScreen() {
       <div className="flex flex-col h-screen items-center justify-center bg-background">
         <Card className="w-[350px]">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Baat-Chit</CardTitle>
+            <CardTitle className="text-2xl">ChitChat</CardTitle>
             <CardDescription>Secure multiplayer communication</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">

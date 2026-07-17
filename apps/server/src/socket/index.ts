@@ -35,37 +35,26 @@ export const initializeSocket = (httpServer: HttpServer) => {
     // the REST layer uses, so both paths are verified server-side and
     // neither can be spoofed by the client.
     io.use(async (socket, next) => {
-    try {
-        const rawCookies = socket.request.headers.cookie;
-        // Sent explicitly by the client via `io(url, { auth: { token } })`
-        // — see apps/web/src/lib/socket.ts. This is how a logged-in user
-        // authenticates when the frontend and this server are on
-        // different domains and the session cookie can't reach us.
-        const bearerToken = socket.handshake.auth?.token as string | undefined;
+        try {
+            const rawCookies = socket.request.headers.cookie;
+            // Sent explicitly by the client via `io(url, { auth: { token } })`
+            // — see apps/web/src/lib/socket.ts. This is how a logged-in user
+            // authenticates when the frontend and this server are on
+            // different domains and the session cookie can't reach us.
+            const bearerToken = socket.handshake.auth?.token as string | undefined;
+            const identity = await resolveIdentity(rawCookies, bearerToken);
 
-        // TEMP DEBUG — remove once cross-domain login is confirmed working.
-        console.log("[socket auth]", {
-            hasCookies: !!rawCookies,
-            hasBearerToken: !!bearerToken,
-            bearerTokenPreview: bearerToken ? `${bearerToken.slice(0, 8)}...` : null,
-        });
+            if (!identity) {
+                return next(new Error("Authentication error: No valid session or guest token."));
+            }
 
-        const identity = await resolveIdentity(rawCookies, bearerToken);
-
-        // TEMP DEBUG — remove once cross-domain login is confirmed working.
-        console.log("[socket auth] resolveIdentity result:", identity);
-
-        if (!identity) {
-            return next(new Error("Authentication error: No valid session or guest token."));
+            socket.data.identity = identity;
+            next();
+        } catch (error) {
+            console.error("Socket Middleware Error:", error);
+            next(new Error("Internal Server Error during authentication"));
         }
-
-        socket.data.identity = identity;
-        next();
-    } catch (error) {
-        console.error("Socket Middleware Error:", error);
-        next(new Error("Internal Server Error during authentication"));
-    }
-});
+    });
 
     // Socket Connection & Handler Registration
     io.on("connection", (socket) => {
