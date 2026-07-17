@@ -10,6 +10,12 @@ export const authClient = createAuthClient({
     ],
     fetchOptions: {
         onSuccess: (ctx) => {
+            // TEMP DEBUG — remove once cross-domain login is confirmed working.
+            console.log("[auth-client] request succeeded:", {
+                url: ctx.response.url,
+                hasSetAuthToken: ctx.response.headers.has("set-auth-token"),
+            });
+
             // Fires on every successful call through this client — sign-in,
             // sign-up, and the getSession call useSession() makes on mount.
             // Whenever Better Auth hands us a fresh token, keep our copy in
@@ -20,6 +26,9 @@ export const authClient = createAuthClient({
             }
         },
         onError: (ctx) => {
+            // TEMP DEBUG — remove once cross-domain login is confirmed working.
+            console.log("[auth-client] request errored:", ctx.response?.url, ctx.response?.status);
+
             // A 401 here means there's no valid session anymore (signed out
             // / expired) — drop the stale bearer token so we don't keep
             // sending the backend a token that no longer resolves.
