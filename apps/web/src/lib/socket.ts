@@ -12,7 +12,12 @@ export const socket = io(BACKEND_URL, {
     // connection attempt, including auto-reconnects — a plain object here
     // would freeze whatever token existed at module-load time, which for a
     // guest-then-login flow would be `undefined` forever.
-    auth: (cb) => cb({ token: getBearerToken() }),
+    auth: (cb) => {
+        const token = getBearerToken();
+        // TEMP DEBUG — remove once cross-domain login is confirmed working.
+        console.log("[socket] connecting with token:", token ? `${token.slice(0, 8)}...` : null);
+        cb({ token });
+    },
 })
 
 // How long to wait after a disconnect before treating the user as

@@ -37,12 +37,19 @@ export const initializeSocket = (httpServer: HttpServer) => {
     io.use(async (socket, next) => {
         try {
             const rawCookies = socket.request.headers.cookie;
-            // Sent explicitly by the client via `io(url, { auth: { token } })`
-            // — see apps/web/src/lib/socket.ts. This is how a logged-in user
-            // authenticates when the frontend and this server are on
-            // different domains and the session cookie can't reach us.
             const bearerToken = socket.handshake.auth?.token as string | undefined;
+
+            // TEMP DEBUG — remove once cross-domain login is confirmed working.
+            console.log("[socket auth]", {
+                hasCookies: !!rawCookies,
+                hasBearerToken: !!bearerToken,
+                bearerTokenPreview: bearerToken ? `${bearerToken.slice(0, 8)}...` : null,
+            });
+
             const identity = await resolveIdentity(rawCookies, bearerToken);
+
+            // TEMP DEBUG — remove once cross-domain login is confirmed working.
+            console.log("[socket auth] resolveIdentity result:", identity);
 
             if (!identity) {
                 return next(new Error("Authentication error: No valid session or guest token."));

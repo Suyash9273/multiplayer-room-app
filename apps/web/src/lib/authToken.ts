@@ -39,6 +39,8 @@ export async function syncBearerToken(): Promise<void> {
     try {
         const res = await fetch("/api/session-token", { credentials: "include" });
         const { token } = await res.json();
+        // TEMP DEBUG — remove once cross-domain login is confirmed working.
+        console.log("[syncBearerToken]", { status: res.status, hasToken: !!token });
         setBearerToken(token);
     } catch (err) {
         console.error("Failed to sync bearer token:", err);
