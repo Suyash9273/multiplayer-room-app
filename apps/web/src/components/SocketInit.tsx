@@ -6,6 +6,7 @@ import { registerSocketListeners } from "@/lib/socketListeners"
 import { join } from "@/lib/socketActions"
 import { useSessionStore } from "@/store/sessionStore"
 import { socket } from "@/lib/socket"
+import { syncBearerToken } from "@/lib/authToken"
 
 type ExtendedUser = { id: string; username?: string | null }
 
@@ -26,7 +27,11 @@ export function SocketInit() {
 
     if (user?.username && !isJoined && !hasAttempted.current) {
       hasAttempted.current = true
-      join()
+      // This is the actual auto-join path for a returning logged-in user —
+      // LoginScreen (and its own token sync) never mounts in this case, so
+      // the token has to be fetched here, and awaited before join() fires
+      // off socket.connect(), which reads it synchronously.
+      syncBearerToken().finally(() => join())
     }
 
     // Only tear down if we WERE a real authenticated user and the Better

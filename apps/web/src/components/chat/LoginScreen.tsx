@@ -88,11 +88,12 @@ export default function LoginScreen() {
     }
   }
 
-  const handleEnterLobby = () => {
+  const handleEnterLobby = async () => {
     // join() no longer takes params — the server resolves and confirms
     // the identity from the session cookie itself and hands it back
     // through the ack, so the client never has to assert its own name.
     if (user?.username) {
+      await syncBearerToken()
       join()
     }
   }
