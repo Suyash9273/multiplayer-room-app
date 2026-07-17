@@ -79,7 +79,9 @@ export async function resolveIdentity(
     const parsed = cookie.parse(rawCookies);
 
     // 2. The real, authenticated path via cookie (existing Better Auth logic, unchanged)
-    const sessionCookie = parsed["better-auth.session_token"];
+    // Better Auth prefixes this cookie with `__Secure-` in production (any
+    // HTTPS deployment) — check both rather than hardcoding one.
+    const sessionCookie = parsed["__Secure-better-auth.session_token"] ?? parsed["better-auth.session_token"];
     if (sessionCookie) {
         const session = await findUserSessionByToken(sessionCookie);
         if (session) {

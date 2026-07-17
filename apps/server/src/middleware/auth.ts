@@ -32,7 +32,11 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
                 return res.status(401).json({ error: "Unauthorized: No cookies" });
             }
             const parsedCookies = cookie.parse(rawCookies);
-            sessionToken = parsedCookies["better-auth.session_token"]?.split(".")[0];
+            // Better Auth prefixes this cookie with `__Secure-` in
+            // production (any HTTPS deployment) — check both.
+            const rawSessionCookie =
+                parsedCookies["__Secure-better-auth.session_token"] ?? parsedCookies["better-auth.session_token"];
+            sessionToken = rawSessionCookie?.split(".")[0];
         } else {
             sessionToken = sessionToken.split(".")[0];
         }
