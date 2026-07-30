@@ -31,8 +31,10 @@ export function FriendList() {
     const router = useRouter();
     const currentUserId = useSessionStore((s) => s.userId);
 
-    // NEW: Local state to prevent spam-clicking while the database provisions the room
-    const [isNavigating, setIsNavigating] = useState(false);
+    // Track which friend's DM button is currently loading so only that one
+    // shows the spinner — a boolean would disable ALL message buttons while
+    // any single DM room is being provisioned, which is wrong.
+    const [navigatingFriendId, setNavigatingFriendId] = useState<string | null>(null);
     const [removingId, setRemovingId] = useState<string | null>(null);
 
     const handleRemoveFriend = async (friendshipId: string) => {
@@ -59,9 +61,9 @@ export function FriendList() {
     // THE NEW SECURE DM ROUTER
     // ============================================================================
     const handleMessageFriend = async (friendId: string, friendUsername: string) => {
-        if (!currentUserId || !friendId || isNavigating) return;
+        if (!currentUserId || !friendId || navigatingFriendId) return;
 
-        setIsNavigating(true);
+        setNavigatingFriendId(friendId);
 
         try {
             // 1. Ask the Express Backend to Get or Create the relational Room
@@ -85,9 +87,8 @@ export function FriendList() {
             router.push(`/room/${realRoomId}?type=DIRECT&title=${encodeURIComponent(friendUsername)}`);
         } catch (error) {
             console.error("DM Routing Error:", error);
-            // Optionally, add a toast notification here if it fails
         } finally {
-            setIsNavigating(false);
+            setNavigatingFriendId(null);
         }
     };
 
@@ -148,15 +149,15 @@ export function FriendList() {
                                             <Button
                                                 size="sm"
                                                 variant="secondary"
-                                                disabled={isNavigating}
+                                                disabled={navigatingFriendId === friend.user.id}
                                                 onClick={() => handleMessageFriend(friend.user.id, displayUsername)}
                                             >
-                                                {isNavigating ? (
+                                                {navigatingFriendId === friend.user.id ? (
                                                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                                 ) : (
                                                     <MessageSquare className="h-4 w-4 mr-2" />
                                                 )}
-                                                {isNavigating ? "Routing..." : "Message"}
+                                                {navigatingFriendId === friend.user.id ? "Routing..." : "Message"}
                                             </Button>
 
                                             <Button

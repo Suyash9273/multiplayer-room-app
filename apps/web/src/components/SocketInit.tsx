@@ -12,7 +12,11 @@ type ExtendedUser = { id: string; username?: string | null }
 
 export function SocketInit() {
   const { data: session, isPending } = useSession()
-  const hasAttempted = useRef(false)
+  // Track WHICH user id we last attempted a join for, not just "did we try".
+  // This lets us re-attempt when a different account signs in after a logout
+  // in the same page session — a plain boolean ref would permanently block
+  // the second join attempt since it never resets to false in that scenario.
+  const lastAttemptedUserId = useRef<string | null>(null)
 
   useEffect(() => {
     const cleanup = registerSocketListeners()
@@ -25,8 +29,8 @@ export function SocketInit() {
     const user = session?.user as ExtendedUser | undefined
     const isJoined = useSessionStore.getState().isJoined
 
-    if (user?.username && !isJoined && !hasAttempted.current) {
-      hasAttempted.current = true
+    if (user?.username && !isJoined && lastAttemptedUserId.current !== user.id) {
+      lastAttemptedUserId.current = user.id
       // This is the actual auto-join path for a returning logged-in user —
       // LoginScreen (and its own token sync) never mounts in this case, so
       // the token has to be fetched here, and awaited before join() fires
@@ -45,7 +49,7 @@ export function SocketInit() {
     if (!user && identityType === "user" && isJoined) {
       socket.disconnect()
       useSessionStore.getState().reset()
-      hasAttempted.current = false
+      lastAttemptedUserId.current = null
     }
   }, [session, isPending])
 

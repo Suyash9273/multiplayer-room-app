@@ -30,11 +30,15 @@ export default function RoomPage({params}: {params: Promise<{roomId: string}>}) 
         // on a spinner that never resolves on its own.
         if (!hasSomeIdentity || !isJoined) {
             router.push("/")
-            return
         }
-
-        useSessionStore.getState().setCurrentRoom(decodedRoomId)
-    }, [isPending, hasSomeIdentity, isJoined, router, decodedRoomId]);
+        // NOTE: setCurrentRoom is intentionally NOT called here.
+        // RoomScreen's own useEffect calls enterRoom(roomId), which already
+        // sets currentRoom in the store. Calling it here too created a race
+        // condition where the page set the room before RoomScreen's effect
+        // ran, and then enterRoom's guard (`if currentRoom === roomId return`)
+        // would no-op the socket emit on the first render — leaving the server
+        // unaware the user had entered the room.
+    }, [isPending, hasSomeIdentity, isJoined, router]);
 
     if (isPending) return null;
     if (!hasSomeIdentity || !isJoined) return null;

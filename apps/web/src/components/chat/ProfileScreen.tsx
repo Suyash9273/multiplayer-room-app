@@ -91,6 +91,9 @@ export default function ProfileScreen() {
             // actually stored, not just what we optimistically had locally.
             setInterests(data.interests)
             setStatusMsg("Saved.")
+            // Auto-clear the success message so it doesn't look like a
+            // permanent label when the user continues editing.
+            setTimeout(() => setStatusMsg(""), 3000)
         } catch (error) {
             console.error(error)
             setStatusMsg("Failed to save. Try again.")

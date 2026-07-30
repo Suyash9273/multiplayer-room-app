@@ -40,7 +40,14 @@ export const useChatStore = create<ChatState>((set) => ({
             ))
         })),
     prependMessages: (incoming) =>
-        set((state) => ({ messages: [...incoming, ...state.messages] })),
+        set((state) => {
+            // Guard against the intersection observer firing twice before the
+            // first async fetch resolves — without deduplication the same page
+            // of history would appear twice in the list.
+            const existingIds = new Set(state.messages.map((m) => m.id))
+            const fresh = incoming.filter((m) => !existingIds.has(m.id))
+            return { messages: [...fresh, ...state.messages] }
+        }),
     setMessagesFromHistory: (messages) => set({messages}),
     clearMessages: () => set({messages: []}),
 

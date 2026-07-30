@@ -29,6 +29,7 @@ export default function LoginScreen() {
   const [errorMsg, setErrorMsg] = useState("")
   const [isMintingGuest, setIsMintingGuest] = useState(false)
   const [guestError, setGuestError] = useState("")
+  const [isEnteringLobby, setIsEnteringLobby] = useState(false)
 
   // The Better Auth session cookie is scoped to this (Vercel) domain and
   // can never reach the Railway server, so we separately fetch the raw
@@ -93,8 +94,12 @@ export default function LoginScreen() {
     // the identity from the session cookie itself and hands it back
     // through the ack, so the client never has to assert its own name.
     if (user?.username) {
+      setIsEnteringLobby(true)
       await syncBearerToken()
       join()
+      // Note: don't setIsEnteringLobby(false) — the page will redirect
+      // once isJoined becomes true, so keeping the loading state prevents
+      // a flash back to the enabled button right before navigation.
     }
   }
 
@@ -177,8 +182,8 @@ export default function LoginScreen() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <Button className="w-full" size="lg" onClick={handleEnterLobby}>
-            Enter Lobby
+          <Button className="w-full" size="lg" onClick={handleEnterLobby} disabled={isEnteringLobby}>
+            {isEnteringLobby ? "Connecting..." : "Enter Lobby"}
           </Button>
           <Button variant="ghost" className="w-full" onClick={() => logout()}>
             Sign Out

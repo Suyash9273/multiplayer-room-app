@@ -40,6 +40,7 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState("")
   const [editError, setEditError] = useState("")
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -84,17 +85,74 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
     // 1. Tell the Express backend to physically join the Socket.IO room
     enterRoom(roomId);
 
-    // 2. Reset pagination state for the new room
+    // Also clear any stale edit error from a previous room session
+    setEditError("");
+    setEditingId(null);
+
+    // 2. Reset pagination state for the new room and fetch directly —
+    //    don't call fetchHistoricalMessages() here because it closes over
+    //    a stale `hasMore` (still false from the previous room's last page)
+    //    and would short-circuit on the guard check before any state has
+    //    had a chance to update.
     setNextCursor(null);
     setHasMore(true);
+    setIsFetchingHistory(true);
 
-    // 3. Fetch history
-    fetchHistoricalMessages(null);
+    const fetchFirstPage = async () => {
+      try {
+        const container = scrollContainerRef.current;
+        const previousScrollHeight = container?.scrollHeight || 0;
+        const url = `${BACKEND_URL}/api/rooms/${roomId}/messages`;
+        const res = await apiFetch(url);
+        if (!res.ok) throw new Error("Failed to fetch history");
+
+        const data = await res.json();
+        setNextCursor(data.nextCursor);
+        if (!data.nextCursor) setHasMore(false);
+
+        const formattedHistory = data.messages.map((dbMsg: any) => ({
+          id: dbMsg.id,
+          roomId: dbMsg.roomId,
+          message: dbMsg.message,
+          senderId: dbMsg.senderId,
+          senderDisplayName: dbMsg.senderDisplayName,
+          timestamp: new Date(dbMsg.createdAt).getTime(),
+          status: "sent",
+          type: dbMsg.type,
+          isRead: dbMsg.isRead,
+          readAt: dbMsg.readAt ? new Date(dbMsg.readAt).getTime() : undefined,
+          editedAt: dbMsg.editedAt ? new Date(dbMsg.editedAt).getTime() : undefined,
+          deletedAt: dbMsg.deletedAt ? new Date(dbMsg.deletedAt).getTime() : undefined,
+        }));
+
+        setMessagesFromHistory(formattedHistory);
+
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - previousScrollHeight;
+          }
+        });
+      } catch (error) {
+        console.error("Initial history fetch error:", error);
+      } finally {
+        setIsFetchingHistory(false);
+      }
+    };
+
+    fetchFirstPage();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
-  // --- THE HISTORICAL FETCHER ---
+  // Keep a ref so the callback can read the latest value without being
+  // re-created every time isFetchingHistory toggles (which would cause the
+  // observer useEffect below to re-register on every single fetch).
+  const isFetchingHistoryRef = useRef(false)
+
+  // --- THE HISTORICAL FETCHER (paginated — used by the scroll observer) ---
   const fetchHistoricalMessages = useCallback(async (cursor?: string | null) => {
-    if (isFetchingHistory || !hasMore || !roomId) return;
+    if (isFetchingHistoryRef.current || !hasMore || !roomId) return;
+    isFetchingHistoryRef.current = true;
     setIsFetchingHistory(true);
 
     try {
@@ -143,15 +201,19 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
     } catch (error) {
       console.error("Pagination error:", error);
     } finally {
+      isFetchingHistoryRef.current = false;
       setIsFetchingHistory(false);
     }
-  }, [roomId, hasMore, isFetchingHistory, prependMessages, setMessagesFromHistory])
+  // isFetchingHistory intentionally excluded — we track it via ref above
+  // so the callback identity stays stable and the observer doesn't re-fire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, hasMore, prependMessages, setMessagesFromHistory])
 
   // --- THE INTERSECTION OBSERVER ---
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && !isFetchingHistory && hasMore) {
+        if (entries[0].isIntersecting && !isFetchingHistoryRef.current && hasMore) {
           fetchHistoricalMessages(nextCursor);
         }
       },
@@ -163,7 +225,7 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
     }
 
     return () => observer.disconnect();
-  }, [nextCursor, isFetchingHistory, hasMore, roomId]);
+  }, [nextCursor, hasMore, roomId, fetchHistoricalMessages]);
 
 
   // --- READ RECEIPTS ---
@@ -175,6 +237,14 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
     if (!roomId) return;
     markRead(roomId);
   }, [roomId, messages.length]);
+
+  // Cleanup: clear the typing debounce timer on unmount so we don't emit
+  // stopTyping into a room we've already left.
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+    }
+  }, [])
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault()
@@ -231,8 +301,8 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
     }, 2000)
   }
 
-  const handleTypingUsers = () => {
-    if (typingUsers.length === 0) return null
+  const typingIndicatorText = () => {
+    if (typingUsers.length === 0) return ""
     if (typingUsers.length === 1) return `${typingUsers[0]} is typing...`
     if (typingUsers.length === 2) return `${typingUsers[0]} and ${typingUsers[1]} are typing...`
     return `Several people are typing...`
@@ -342,7 +412,9 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
             return (
               <div
                 key={msg.id}
-                className={`flex flex-col max-w-[75%] group ${isMe ? 'self-end items-end' : 'self-start items-start'}`}
+                className={`flex flex-col max-w-[75%] ${isMe ? 'self-end items-end' : 'self-start items-start'}`}
+                onMouseEnter={() => setHoveredMessageId(msg.id)}
+                onMouseLeave={() => setHoveredMessageId(null)}
               >
                 <span className="text-xs text-muted-foreground mb-1 px-1">
                   {msg.senderDisplayName}
@@ -369,8 +441,8 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
                   </div>
                 ) : (
                   <div className="flex items-end gap-1.5">
-                    {canModify && (
-                      <div className="hidden group-hover:flex items-center gap-0.5 order-first">
+                    {canModify && (hoveredMessageId === msg.id) && (
+                      <div className="flex items-center gap-0.5 order-first">
                         <Button
                           size="icon"
                           variant="ghost"
@@ -418,7 +490,7 @@ export default function RoomScreen({ roomId }: { roomId: string }) {
         {/* TYPING INDICATOR */}
         <div className="h-6 px-6 flex items-center shrink-0 bg-background">
           <span className="text-xs text-muted-foreground italic">
-            {handleTypingUsers()}
+            {typingIndicatorText()}
           </span>
         </div>
 

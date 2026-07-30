@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { socket } from "@/lib/socket"
@@ -34,6 +34,7 @@ export default function FindStrangerButton() {
         const onFallbackActive = () => setIsExpanded(true)
 
         const onMatchFound = ({ roomId }: { roomId: string }) => {
+            matchFoundRef.current = true
             setIsSearching(false)
             setIsExpanded(false)
             router.push(`/room/${roomId}`)
@@ -58,11 +59,23 @@ export default function FindStrangerButton() {
         }
     }, [router])
 
+    // Track whether we left the queue because a match succeeded (navigation)
+    // vs. because the user manually left. Only cancel the queue on the latter.
+    const matchFoundRef = useRef(false)
+
     // If this component unmounts while still searching, tell the server to
     // drop us from the queue — otherwise we'd be a ghost entry that could
     // get matched to someone after we've already left.
+    // We skip the cancel if a match was already found — firing cancelFindMatch
+    // immediately after matchFound (which happens because router.push() triggers
+    // an unmount) would race against the server's own queue cleanup and could
+    // incorrectly remove another user who entered the queue at the same instant.
     useEffect(() => {
-        return () => { cancelFindMatch() }
+        return () => {
+            if (!matchFoundRef.current) {
+                cancelFindMatch()
+            }
+        }
     }, [])
 
     const handleClick = () => {
