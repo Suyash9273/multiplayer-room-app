@@ -12,6 +12,8 @@ export default function Home() {
     const { data: session, isPending } = useSession();
     const router = useRouter();
 
+    console.log(process.env.DATABASE_URL)
+
     // A guest has no Better Auth session at all — `isJoined` (set once the
     // server confirms identity via the socket "join" ack) is the only
     // signal we have for them, so the lobby gate has to accept EITHER a
